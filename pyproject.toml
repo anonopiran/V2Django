@@ -13,7 +13,7 @@ protobuf = "^4.21.9"
 influxdb-client = {extras = ["ciso"], version = "^1.34.0"}
 django-environ = "^0.9.0"
 drf-spectacular = "^0.24.2"
-celery = {extras = ["librabbitmq", "redis", "django"], version = "^5.2.7"}
+celery = {extras = ["redis", "django"], version = "^5.2.7"}
 yarl = "^1.8.1"
 pre-commit = "^2.20.0"
 black = "^22.10.0"
