@@ -13,7 +13,7 @@ ENV PATH="$POETRY_HOME/bin:$VENV_PATH/bin:$PATH"
 
 FROM python-base as builder-base
 RUN apt-get update &&\
-     apt-get install --no-install-recommends -y curl build-essential libffi-dev python3-dev
+     apt-get install --no-install-recommends -y curl build-essential libffi-dev python3-dev libpq-dev
 RUN curl -sSL https://install.python-poetry.org | python3 -
 WORKDIR $PYSETUP_PATH
 COPY poetry.lock pyproject.toml ./
