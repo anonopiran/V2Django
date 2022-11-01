@@ -122,3 +122,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+.idea/
+
+test.py
+
+docker-compose.yaml
+
+storage/

@@ -1,0 +1,56 @@
+[tool.poetry]
+name = "v2django"
+version = "0.1.0"
+description = ""
+authors = ["anonopiran <anonopiran@proton.me>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+Django = "^4.1.2"
+djangorestframework = "^3.14.0"
+grpcio = "^1.50.0"
+protobuf = "^4.21.9"
+influxdb-client = {extras = ["ciso"], version = "^1.34.0"}
+django-environ = "^0.9.0"
+drf-spectacular = "^0.24.2"
+celery = {extras = ["librabbitmq", "redis", "django"], version = "^5.2.7"}
+yarl = "^1.8.1"
+pre-commit = "^2.20.0"
+black = "^22.10.0"
+Flake8-pyproject = "^1.1.0"
+
+[tool.poetry.dev-dependencies]
+isort = "^5.10.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.black]
+line-length = 79
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+force-exclude = 'V2RayMan/v2ray_proto'
+
+[tool.flake8]
+ignore = ['E203', 'E266', 'E501', 'W503', 'F403', 'F401']
+max-line-length = 79
+max-complexity = 18
+select = ['B', 'C', 'E', 'F', 'W', 'T4', 'B9']
+exclude = 'V2RayMan/v2ray_proto/*'
+
+[tool.isort]
+profile = "black"
