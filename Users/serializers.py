@@ -27,6 +27,7 @@ class SubscriptionSerializer(serializers.ModelSerializer):
 class V2RayProfileSerializer(serializers.ModelSerializer):
     subscription_set = SubscriptionSerializer(read_only=True, many=True)
     active_subscription = serializers.SerializerMethodField()
+    used_bandwidth = serializers.JSONField(read_only=True)
 
     class Meta:
         model = V2RayProfile
@@ -36,6 +37,7 @@ class V2RayProfileSerializer(serializers.ModelSerializer):
             "system_message",
             "admin_message",
             "active_subscription",
+            "used_bandwidth",
         ]
         fields = read_only_fields + ["email", "uuid", "subscription_set"]
 
