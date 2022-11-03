@@ -38,8 +38,11 @@ class V2RayProfileSerializer(serializers.ModelSerializer):
             "admin_message",
             "active_subscription",
             "used_bandwidth",
+            "status__bandwidth",
+            "status__date",
+            "subscription_set",
         ]
-        fields = read_only_fields + ["email", "uuid", "subscription_set"]
+        fields = read_only_fields + ["email", "uuid"]
 
     @staticmethod
     def get_active_subscription(obj):

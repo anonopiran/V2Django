@@ -1,11 +1,11 @@
 from celery import shared_task
 
-from Users.commands import user_state_checkpoint, v2ray_state_update
+from Users.commands import user_stats_checkpoint, v2ray_state_update
 
 
 @shared_task
 def user_state_checkpoint_task():
-    user_state_checkpoint()
+    user_stats_checkpoint()
 
 
 @shared_task

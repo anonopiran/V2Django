@@ -55,7 +55,7 @@ class V2RayProfile(models.Model):
     @property
     def status__bandwidth(self):
         subs = self.active_subscription
-        return subs.end_volume > self.used_bandwidth["downlink_bytes"]
+        return subs.end_volume > self.used_bandwidth["total_bytes"]
 
     @property
     def status__date(self):

@@ -3,7 +3,7 @@ from V2RayMan.api import GrpcClient
 from V2RayMan.commands import user__stats__store
 
 
-def user_state_checkpoint():
+def user_stats_checkpoint():
     user__stats__store()
 
 
