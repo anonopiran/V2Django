@@ -131,3 +131,4 @@ site
 **/docker-compose.yaml
 
 **/storage/
+statics/
