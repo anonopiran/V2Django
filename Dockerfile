@@ -13,4 +13,3 @@ RUN apt-get update &&\
 FROM env AS app
 COPY . .
 RUN chmod +x ./run.sh
-ENTRYPOINT "/bin/bash"
