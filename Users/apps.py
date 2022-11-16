@@ -1,3 +1,5 @@
+import sys
+
 from django.apps import AppConfig
 
 
@@ -8,7 +10,11 @@ class UsersConfig(AppConfig):
     def ready(self):
         from django.conf import settings
 
-        from Users.commands import v2ray_state_update
+        from Users.models import V2RayProfile
 
-        if settings.USER_INIT_ON_START:
-            v2ray_state_update()
+        if (
+            settings.USER_INIT_ON_START
+            and ("manage.py" not in sys.argv[0] or sys.argv[1] == "runserver")
+            and "celery" not in sys.argv[0]
+        ):
+            V2RayProfile.update__all(force=True)

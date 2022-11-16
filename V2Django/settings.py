@@ -26,12 +26,10 @@ env.prefix = "DJANGO__"
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = (
-    "django-insecure-bqqo28n)-h#6@e0i)(&f3r3lyc_-$4(@uf2^+^3()0v(jpt%@3"
-)
+SECRET_KEY = env.str("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env.bool("DEBUG", default=False)
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
@@ -127,43 +125,29 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.1/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = env.path("STATIC_ROOT", default=BASE_DIR / "statics")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-#
-V2RAY_SERVERS = [URL(x) for x in env.tuple("V2RAY_SERVERS")]
-assert len(
-    V2RAY_SERVERS
-), f"no v2ray server defined in {env.prefix}V2RAY_SERVERS"
-assert all(
-    x.is_absolute() for x in V2RAY_SERVERS
-), f"some {env.prefix}V2RAY_SERVERS are not absolute"
-V2RAY_CONFIG_PATH = BASE_DIR / env.path(
-    "V2RAY_CONFIG_PATH", default="storage/config.json"
-)
-INFLUX_DSN = env.url("INFLUX_DSN")
+# app
+V2USER_URI = URL(env.str("V2USER_URI"))
+INFLUX_URI = URL(env.str("INFLUX_URI"))
 INFLUX_BUCKET_USER_STATS = env.str("INFLUX_BUCKET_USER_STATS")
+
 USER_DEFAULT_SUBS_DURATION = env.str("USER_DEFAULT_SUBS_DURATION", 30)
 USER_DEFAULT_SUBS_VOLUME = env.str("USER_DEFAULT_SUBS_VOLUME", "10Gb")
-USER_INIT_ON_START = env.bool("USER_INIT_ON_START", True)
+USER_INIT_ON_START = env.bool("USER_INIT_ON_START", default=True)
 
 CELERY_BROKER_URL = env.str("CELERY_BROKER_URL")
-CELERY_INTERVAL_V2RAY_STATE_UPDATE_TASK = env.int(
-    "CELERY_INTERVAL_V2RAY_STATE_UPDATE_TASK", 60
-)
-CELERY_INTERVAL_USER_STATE_CHECKPOINT_TASK = env.int(
-    "CELERY_INTERVAL_USER_STATE_CHECKPOINT_TASK", 60
+CELERY_INTERVAL_V2RAYPROFILE_UPDATE = env.int(
+    "CELERY_INTERVAL_V2RAYPROFILE_UPDATE", 60
 )
 CELERY_BEAT_SCHEDULE = {
-    "v2ray_state_update_task": {
-        "task": "Users.tasks.v2ray_state_update_task",
-        "schedule": CELERY_INTERVAL_V2RAY_STATE_UPDATE_TASK,
-    },
-    "user_state_checkpoint_task": {
-        "task": "Users.tasks.user_state_checkpoint_task",
-        "schedule": CELERY_INTERVAL_USER_STATE_CHECKPOINT_TASK,
-    },
+    "task__v2rayprofile_update": {
+        "task": "Users.tasks.task__v2rayprofile_update",
+        "schedule": CELERY_INTERVAL_V2RAYPROFILE_UPDATE,
+    }
 }

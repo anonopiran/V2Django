@@ -8,8 +8,10 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 import Utils.helpers
-from V2RayMan.api import GrpcClient
-from V2RayMan.commands import user__stats__get
+from Users.manager import UserMan, StatMan
+import logging
+
+logger = logging.getLogger("django.server")
 
 
 class V2RayProfile(models.Model):
@@ -17,7 +19,6 @@ class V2RayProfile(models.Model):
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
     active_system = models.BooleanField(default=False, editable=False)
     active_admin = models.BooleanField(default=True)
-    system_message = models.TextField(blank=True, editable=False)
     admin_message = models.TextField(blank=True)
 
     v2ray_state = models.BooleanField(default=False, editable=False)
@@ -27,7 +28,13 @@ class V2RayProfile(models.Model):
 
     @property
     def used_bandwidth(self):
-        s_ = user__stats__get(self.email).get(self.email, {})
+        stat_man = StatMan()
+        if self.active_subscription:
+            s_ = stat_man.get__usage(
+                self.email, self.active_subscription.start_date
+            )
+        else:
+            s_ = {"downlink": 0, "uplink": 0}
         res = {}
         t_ = 0
         for k_ in ("downlink", "uplink"):
@@ -41,57 +48,64 @@ class V2RayProfile(models.Model):
     @property
     def active_subscription(self):
         if self.id:
-            s_ = self.subscription_set.order_by("start_date").last()
+            s_ = self.subscription_set.order_by("id").last()
         else:
             s_ = None
-        if s_ is None:
-            s_ = type("", (), {})()
-            s_.end_volume = 0
-            s_.end_date = timezone.datetime(
-                1990, 1, 1, tzinfo=timezone.get_current_timezone()
-            )
         return s_
 
     @property
     def status__bandwidth(self):
         subs = self.active_subscription
-        return subs.end_volume > self.used_bandwidth["total_bytes"]
+        return (subs is not None) and (
+            subs.volume > self.used_bandwidth["total_bytes"]
+        )
 
     @property
     def status__date(self):
         subs = self.active_subscription
-        return subs.end_date > timezone.now()
+        return (subs is not None) and (subs.end_date > timezone.now())
 
-    def v2ray__activate(self, channel=None):
-        GrpcClient(servers=settings.V2RAY_SERVERS).user__add(
-            email=self.email, uuid=self.uuid, channel=channel
-        )
+    def v2ray__activate(self):
+        UserMan().user__add(self.uuid, self.email)
 
-    def v2ray__deactivate(self, channel=None):
-        GrpcClient(servers=settings.V2RAY_SERVERS).user__remove(
-            email=self.email, channel=channel
-        )
+    def v2ray__deactivate(self):
+        UserMan().user__rm(self.email)
 
     def update__status(self):
         band_ = self.status__bandwidth
         date_ = self.status__date
-        msg = []
-        if not band_:
-            msg.append("bandwidth")
-        if not date_:
-            msg.append("date")
         self.active_system = band_ and date_
-        msg = " - ".join(msg)
-        self.system_message = msg
 
-    def update__v2ray(self, channel=None):
+    def update__v2ray(self):
         if self.active_system and self.active_admin:
-            self.v2ray__activate(channel=channel)
+            self.v2ray__activate()
             self.v2ray_state = True
         else:
-            self.v2ray__deactivate(channel=channel)
+            self.v2ray__deactivate()
             self.v2ray_state = False
         self.v2ray_state_date = timezone.now()
+
+    @classmethod
+    def update__all(cls, force=False):
+        if force:
+            users = cls.objects.all()
+        else:
+            users = cls.objects.filter(active_admin=True, active_system=True)
+        s_ = users.values("active_admin", "active_system")
+        update_list = set()
+        for s_, u_ in zip(s_, users):
+            u_.update__status()
+            if (
+                force
+                or u_.active_admin != s_["active_admin"]
+                or u_.active_system != s_["active_system"]
+            ):
+                u_.update__v2ray()
+                update_list.add(u_)
+        cls.objects.bulk_update(
+            update_list, ["active_system", "v2ray_state", "v2ray_state_date"]
+        )
+        logger.info(f"{len(update_list)} users updated")
 
     def __str__(self):
         return self.email
@@ -106,27 +120,17 @@ class Subscription(models.Model):
         )
     )
     start_date = models.DateTimeField(auto_now_add=True)
-    start_volume = models.PositiveBigIntegerField(blank=True)
 
     @property
     def end_date(self):
-        if self.start_volume is None:
-            v_ = None
-        else:
-            v_ = self.start_date + datetime.timedelta(days=self.duration)
+        v_ = self.start_date + datetime.timedelta(days=self.duration)
         return v_
 
-    @property
-    def end_volume(self):
-        if self.start_volume is None:
-            v_ = None
-        else:
-            v_ = self.start_volume + self.volume
-        return v_
+    class Meta:
+        ordering = ("-id",)
 
-    def assign__start_volume(self):
-        if self.start_volume is None:
-            self.start_volume = self.user.used_bandwidth["downlink_bytes"]
+    def __str__(self):
+        return self.user.email
 
 
 # ============================================================================================================
@@ -142,12 +146,7 @@ def _v2rayprofile__update_v2ray(instance: V2RayProfile, **__):
     instance.update__v2ray()
 
 
-@receiver(pre_save, sender=Subscription)
-def _subscription__assign__start_volume(instance: Subscription, **__):
-    instance.assign__start_volume()
-
-
 @receiver(post_save, sender=Subscription)
 @receiver(post_delete, sender=Subscription)
-def subscription__v2rayprofile__update(instance: Subscription, **__):
+def _subscription__v2rayprofile__update(instance: Subscription, **__):
     instance.user.save()

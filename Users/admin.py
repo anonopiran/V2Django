@@ -10,11 +10,8 @@ class InlineSubscriptionAdmin(admin.TabularInline):
         "duration",
         "volume",
         "start_date",
-        "end_date",
-        "start_volume",
-        "end_volume",
     ]
-    readonly_fields = ["start_date", "end_date", "start_volume", "end_volume"]
+    readonly_fields = ["start_date", "end_date"]
     extra = 0
 
     def has_change_permission(self, request, obj=None):
@@ -26,17 +23,46 @@ class V2RayProfileAdmin(CreateOnlyMixin, admin.ModelAdmin):
     createonly_fields = ["email", "uuid"]
     readonly_fields = [
         "active_system",
-        "system_message",
         "used_bandwidth",
         "v2ray_state",
         "v2ray_state_date",
+        "status__bandwidth",
+        "status__date",
     ]
-    list_display = ["email", "active_system", "active_admin"]
+    list_display = [
+        "email",
+        "active_system",
+        "active_admin",
+        "due_date",
+        "usage",
+    ]
     inlines = [InlineSubscriptionAdmin]
+
+    @admin.display(boolean=True)
+    def status__bandwidth(self, obj: V2RayProfile):
+        return obj.status__bandwidth
+
+    @admin.display(boolean=True)
+    def status__date(self, obj: V2RayProfile):
+        return obj.status__date
+
+    @admin.display()
+    def due_date(self, obj: V2RayProfile):
+        return obj.active_subscription.end_date
+
+    @admin.display()
+    def usage(self, obj: V2RayProfile):
+        abs_ = obj.used_bandwidth["total"]
+        p_ = (
+            obj.used_bandwidth["total_bytes"]
+            / obj.active_subscription.volume
+            * 100
+        )
+        return "{} ({:.2f} %)".format(abs_, p_)
 
 
 @admin.register(Subscription)
 class SubscriptionAdmin(CreateOnlyMixin, admin.ModelAdmin):
-    createonly_fields = ["start_date", "start_volume"]
-    readonly_fields = ["end_date", "end_volume"]
-    list_display = ["user", "end_date", "end_volume"]
+    createonly_fields = ["start_date"]
+    readonly_fields = ["end_date"]
+    list_display = ["user", "volume", "start_date", "end_date"]

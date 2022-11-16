@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 
-from V2Django.management.commands.celery_base import (
-    BaseCommand as CeleryBaseCommand,
+from V2Django.management.commands.base.celery_base import (
+    Command as CeleryBaseCommand,
 )
 
 
