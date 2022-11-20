@@ -12,9 +12,7 @@ class SubscriptionSerializer(serializers.ModelSerializer):
         model = Subscription
         read_only_fields = [
             "start_date",
-            "start_volume",
             "end_date",
-            "end_volume",
         ]
 
         fields = read_only_fields + [
@@ -34,7 +32,6 @@ class V2RayProfileSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "active_system",
             "active_admin",
-            "system_message",
             "admin_message",
             "active_subscription",
             "used_bandwidth",

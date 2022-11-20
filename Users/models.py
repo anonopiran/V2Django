@@ -123,7 +123,10 @@ class Subscription(models.Model):
 
     @property
     def end_date(self):
-        v_ = self.start_date + datetime.timedelta(days=self.duration)
+        if self.start_date:
+            v_ = self.start_date + datetime.timedelta(days=self.duration)
+        else:
+            v_ = None
         return v_
 
     class Meta:
