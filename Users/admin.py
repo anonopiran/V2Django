@@ -48,17 +48,19 @@ class V2RayProfileAdmin(CreateOnlyMixin, admin.ModelAdmin):
 
     @admin.display()
     def due_date(self, obj: V2RayProfile):
-        return obj.active_subscription.end_date
+        if obj.active_subscription:
+            return obj.active_subscription.end_date
 
     @admin.display()
     def usage(self, obj: V2RayProfile):
-        abs_ = obj.used_bandwidth["total"]
-        p_ = (
-            obj.used_bandwidth["total_bytes"]
-            / obj.active_subscription.volume
-            * 100
-        )
-        return "{} ({:.2f} %)".format(abs_, p_)
+        if obj.active_subscription:
+            abs_ = obj.used_bandwidth["total"]
+            p_ = (
+                obj.used_bandwidth["total_bytes"]
+                / obj.active_subscription.volume
+                * 100
+            )
+            return "{} ({:.2f} %)".format(abs_, p_)
 
 
 @admin.register(Subscription)
