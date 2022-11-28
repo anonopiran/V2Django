@@ -48,6 +48,8 @@ class V2RayProfile(models.Model):
 
     @property
     def active_subscription(self):
+        if self.id is None:  # while being created
+            return None
         s_ = self.subscription_set.filter(
             state=Subscription.StateChoice.ACTIVE
         )
