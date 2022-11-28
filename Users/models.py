@@ -80,6 +80,8 @@ class V2RayProfile(models.Model):
         UserMan().user__rm(self.email)
 
     def update__subscription(self):
+        if self.id is None:
+            return False
         if not self.active_system:
             with SignalDisconnect(
                 (
