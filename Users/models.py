@@ -11,13 +11,14 @@ import Utils.helpers
 from Users.manager import UserMan, StatMan
 import logging
 
+from Utils.models import SignalDisconnect
+
 logger = logging.getLogger("django.server")
 
 
 class V2RayProfile(models.Model):
     email = models.EmailField(unique=True)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
-    active_system = models.BooleanField(default=False, editable=False)
     active_admin = models.BooleanField(default=True)
     admin_message = models.TextField(blank=True)
 
@@ -31,7 +32,7 @@ class V2RayProfile(models.Model):
         stat_man = StatMan()
         if self.active_subscription:
             s_ = stat_man.get__usage(
-                self.email, self.active_subscription.start_date
+                self.email, self.active_subscription.started_at
             )
         else:
             s_ = {"downlink": 0, "uplink": 0}
@@ -47,11 +48,12 @@ class V2RayProfile(models.Model):
 
     @property
     def active_subscription(self):
-        if self.id:
-            s_ = self.subscription_set.order_by("id").last()
-        else:
-            s_ = None
-        return s_
+        s_ = self.subscription_set.filter(
+            state=Subscription.StateChoice.ACTIVE
+        )
+        if s_.exists():
+            return s_.get()
+        return None
 
     @property
     def status__bandwidth(self):
@@ -65,16 +67,41 @@ class V2RayProfile(models.Model):
         subs = self.active_subscription
         return (subs is not None) and (subs.end_date > timezone.now())
 
+    @property
+    def active_system(self) -> bool:
+        return self.status__date and self.status__bandwidth
+
     def v2ray__activate(self):
         UserMan().user__add(self.uuid, self.email)
 
     def v2ray__deactivate(self):
         UserMan().user__rm(self.email)
 
-    def update__status(self):
-        band_ = self.status__bandwidth
-        date_ = self.status__date
-        self.active_system = band_ and date_
+    def update__subscription(self):
+        if not self.active_system:
+            with SignalDisconnect(
+                (
+                    models.signals.post_save,
+                    dispatch_subscription_v2rayprofile__update_subscription,
+                    Subscription,
+                )
+            ):
+                exp = self.active_subscription
+                if exp:
+                    exp.expire()
+                    exp.save()
+                reserve = (
+                    self.subscription_set.filter(
+                        state=Subscription.StateChoice.RESERVE
+                    )
+                    .order_by("created_at")
+                    .first()
+                )
+                if reserve:
+                    reserve.activate()
+                    reserve.save()
+            return True
+        return False
 
     def update__v2ray(self):
         if self.active_system and self.active_admin:
@@ -90,20 +117,19 @@ class V2RayProfile(models.Model):
         if force:
             users = cls.objects.all()
         else:
-            users = cls.objects.filter(active_admin=True, active_system=True)
-        s_ = users.values("active_admin", "active_system")
+            users = cls.objects.filter(
+                active_admin=True,
+                subscription__state=Subscription.StateChoice.ACTIVE,
+            )
+
         update_list = set()
-        for s_, u_ in zip(s_, users):
-            u_.update__status()
-            if (
-                force
-                or u_.active_admin != s_["active_admin"]
-                or u_.active_system != s_["active_system"]
-            ):
+        for u_ in users:
+            flag = u_.update__subscription()
+            if flag:
                 u_.update__v2ray()
                 update_list.add(u_)
         cls.objects.bulk_update(
-            update_list, ["active_system", "v2ray_state", "v2ray_state_date"]
+            update_list, ["v2ray_state", "v2ray_state_date"]
         )
         logger.info(f"{len(update_list)} users updated")
 
@@ -112,6 +138,11 @@ class V2RayProfile(models.Model):
 
 
 class Subscription(models.Model):
+    class StateChoice(models.TextChoices):
+        RESERVE = "0", "Reserve"
+        ACTIVE = "1", "Active"
+        EXPIRE = "2", "Expire"
+
     user = models.ForeignKey(V2RayProfile, on_delete=models.PROTECT)
     duration = models.IntegerField(default=settings.USER_DEFAULT_SUBS_DURATION)
     volume = models.PositiveBigIntegerField(
@@ -119,12 +150,23 @@ class Subscription(models.Model):
             settings.USER_DEFAULT_SUBS_VOLUME
         )
     )
-    start_date = models.DateTimeField(auto_now_add=True)
+    state = models.CharField(
+        max_length=1, choices=StateChoice.choices, default=StateChoice.RESERVE
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(blank=True, null=True)
+
+    def activate(self):
+        self.state = self.StateChoice.ACTIVE
+        self.started_at = timezone.now()
+
+    def expire(self):
+        self.state = self.StateChoice.EXPIRE
 
     @property
     def end_date(self):
-        if self.start_date:
-            v_ = self.start_date + datetime.timedelta(days=self.duration)
+        if self.started_at:
+            v_ = self.started_at + datetime.timedelta(days=self.duration)
         else:
             v_ = None
         return v_
@@ -140,8 +182,8 @@ class Subscription(models.Model):
 # signals
 # ============================================================================================================
 @receiver(pre_save, sender=V2RayProfile)
-def _v2rayprofile__update_status(instance: V2RayProfile, **__):
-    instance.update__status()
+def _v2rayprofile__update_subscription(instance: V2RayProfile, **__):
+    instance.update__subscription()
 
 
 @receiver(pre_save, sender=V2RayProfile)
@@ -149,7 +191,9 @@ def _v2rayprofile__update_v2ray(instance: V2RayProfile, **__):
     instance.update__v2ray()
 
 
-@receiver(post_save, sender=Subscription)
 @receiver(post_delete, sender=Subscription)
-def _subscription__v2rayprofile__update(instance: Subscription, **__):
+@receiver(post_save, sender=Subscription)
+def dispatch_subscription_v2rayprofile__update_subscription(
+    instance: Subscription, **__
+):
     instance.user.save()

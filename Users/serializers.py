@@ -11,7 +11,7 @@ class SubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Subscription
         read_only_fields = [
-            "start_date",
+            "created_at",
             "end_date",
         ]
 

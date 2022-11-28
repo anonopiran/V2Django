@@ -6,12 +6,8 @@ from Utils.admin import CreateOnlyMixin
 
 class InlineSubscriptionAdmin(admin.TabularInline):
     model = Subscription
-    fields = [
-        "duration",
-        "volume",
-        "start_date",
-    ]
-    readonly_fields = ["start_date", "end_date"]
+    fields = ["duration", "volume", "created_at", "state"]
+    readonly_fields = ["created_at", "end_date", "state"]
     extra = 0
 
     def has_change_permission(self, request, obj=None):
@@ -51,6 +47,10 @@ class V2RayProfileAdmin(CreateOnlyMixin, admin.ModelAdmin):
         if obj.active_subscription:
             return obj.active_subscription.end_date
 
+    @admin.display(boolean=True)
+    def active_system(self, obj: V2RayProfile):
+        return obj.active_system
+
     @admin.display()
     def usage(self, obj: V2RayProfile):
         if obj.active_subscription:
@@ -65,6 +65,6 @@ class V2RayProfileAdmin(CreateOnlyMixin, admin.ModelAdmin):
 
 @admin.register(Subscription)
 class SubscriptionAdmin(CreateOnlyMixin, admin.ModelAdmin):
-    createonly_fields = ["start_date"]
-    readonly_fields = ["end_date"]
-    list_display = ["user", "volume", "start_date", "end_date"]
+    createonly_fields = ["created_at"]
+    readonly_fields = ["end_date", "started_at", "state"]
+    list_display = ["user", "volume", "started_at", "state", "end_date"]
