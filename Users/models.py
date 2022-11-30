@@ -58,14 +58,14 @@ class V2RayProfile(models.Model):
         return None
 
     @property
-    def status__bandwidth(self):
+    def status__bandwidth(self) -> bool:
         subs = self.active_subscription
         return (subs is not None) and (
             subs.volume > self.used_bandwidth["total_bytes"]
         )
 
     @property
-    def status__date(self):
+    def status__date(self) -> bool:
         subs = self.active_subscription
         return (subs is not None) and (subs.end_date > timezone.now())
 
@@ -168,7 +168,7 @@ class Subscription(models.Model):
         self.state = self.StateChoice.EXPIRE
 
     @property
-    def end_date(self):
+    def end_date(self) -> datetime:
         if self.started_at:
             v_ = self.started_at + datetime.timedelta(days=self.duration)
         else:
