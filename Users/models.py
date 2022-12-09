@@ -3,7 +3,12 @@ import uuid
 
 from django.conf import settings
 from django.db import models
-from django.db.models.signals import post_delete, post_save, pre_save
+from django.db.models.signals import (
+    post_delete,
+    post_save,
+    pre_save,
+    pre_delete,
+)
 from django.dispatch import receiver
 from django.utils import timezone
 
@@ -12,6 +17,7 @@ from Users.manager import UserMan, StatMan
 import logging
 
 from Utils.models import SignalDisconnect
+from Users.webhooks import UserExpireWH, SubscriptionExpireWH
 
 logger = logging.getLogger("django.server")
 
@@ -78,6 +84,7 @@ class V2RayProfile(models.Model):
 
     def v2ray__deactivate(self):
         UserMan().user__rm(self.email)
+        UserExpireWH().send(self)
 
     def update__subscription(self):
         if self.id is None:
@@ -165,7 +172,9 @@ class Subscription(models.Model):
         self.started_at = timezone.now()
 
     def expire(self):
-        self.state = self.StateChoice.EXPIRE
+        if self.state == self.StateChoice.ACTIVE:
+            self.state = self.StateChoice.EXPIRE
+            SubscriptionExpireWH().send(self)
 
     @property
     def end_date(self) -> datetime:
@@ -186,13 +195,18 @@ class Subscription(models.Model):
 # signals
 # ============================================================================================================
 @receiver(pre_save, sender=V2RayProfile)
-def _v2rayprofile__update_subscription(instance: V2RayProfile, **__):
+def dispatch__v2rayprofile__update_subscription(instance: V2RayProfile, **__):
     instance.update__subscription()
 
 
 @receiver(pre_save, sender=V2RayProfile)
-def _v2rayprofile__update_v2ray(instance: V2RayProfile, **__):
+def dispatch__v2rayprofile__update_v2ray(instance: V2RayProfile, **__):
     instance.update__v2ray()
+
+
+@receiver(pre_delete, sender=Subscription)
+def dispatch_subscription__expire(instance: Subscription, **__):
+    instance.expire()
 
 
 @receiver(post_delete, sender=Subscription)

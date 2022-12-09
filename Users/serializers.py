@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from drf_spectacular.utils import extend_schema_field
+
 from Users.models import Subscription, V2RayProfile
 
 
