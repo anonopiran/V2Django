@@ -31,20 +31,25 @@ class StatMan:
             yield cl.query_api()
 
     @staticmethod
-    def query_string__usage(email, start):
+    def query_string__usage(email, start, stop):
         return f"""
             from(bucket:"{settings.INFLUX_BUCKET_USER_STATS}")
-                |>range(start: {start}s)
+                |>range(start: {start}s, stop: {stop}s)
                 |> filter(fn: (r) => r["_measurement"] == "bandwidth")
                 |> filter(fn: (r) => r["user"] == "{email}")
                 |> sum()
             """
 
-    def get__usage(self, email, from_):
+    def get__usage(self, email, from_, to_=None):
+        if to_:
+            end = int(to_.timestamp() - timezone.now().timestamp())
+        else:
+            end = 0
+        # end = min(end, -1)
         start = int(from_.timestamp() - timezone.now().timestamp())
-        start = min(start, -1)
+        start = min(start, -2)
         with self.query() as q_:
-            rec = q_.query(self.query_string__usage(email, start))
+            rec = q_.query(self.query_string__usage(email, start, end))
         result = {
             x.records[0].values["direction"]: x.records[0].get_value()
             for x in rec

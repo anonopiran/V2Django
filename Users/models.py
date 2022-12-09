@@ -1,4 +1,6 @@
 import datetime
+import json
+import logging
 import uuid
 
 from django.conf import settings
@@ -14,10 +16,13 @@ from django.utils import timezone
 
 import Utils.helpers
 from Users.manager import UserMan, StatMan
-import logging
-
+from Users.webhooks import (
+    UserExpireWH,
+    SubscriptionExpireWH,
+    UserActivateWH,
+    SubscriptionActivateWH,
+)
 from Utils.models import SignalDisconnect
-from Users.webhooks import UserExpireWH, SubscriptionExpireWH
 
 logger = logging.getLogger("django.server")
 
@@ -35,22 +40,19 @@ class V2RayProfile(models.Model):
 
     @property
     def used_bandwidth(self):
-        stat_man = StatMan()
-        if self.active_subscription:
-            s_ = stat_man.get__usage(
-                self.email, self.active_subscription.started_at
-            )
-        else:
-            s_ = {"downlink": 0, "uplink": 0}
+        if self.active_or_latest_subscription:
+            return self.active_or_latest_subscription.usage
         res = {}
-        t_ = 0
-        for k_ in ("downlink", "uplink"):
-            res[k_ + "_bytes"] = s_.get(k_, 0)
-            res[k_] = Utils.helpers.size__bytes_to_hr(res[k_ + "_bytes"])
-            t_ += res[k_ + "_bytes"]
-        res["total_bytes"] = t_
-        res["total"] = Utils.helpers.size__bytes_to_hr(t_)
+        for k_ in ("downlink", "uplink", "total"):
+            res[k_ + "_bytes"] = 0
+            res[k_] = Utils.helpers.size__bytes_to_hr(0)
         return res
+
+    @property
+    def due_date(self):
+        if self.active_or_latest_subscription:
+            return self.active_or_latest_subscription.due_date
+        return None
 
     @property
     def active_subscription(self):
@@ -64,23 +66,29 @@ class V2RayProfile(models.Model):
         return None
 
     @property
-    def status__bandwidth(self) -> bool:
-        subs = self.active_subscription
-        return (subs is not None) and (
-            subs.volume > self.used_bandwidth["total_bytes"]
+    def active_or_latest_subscription(self):
+        if self.id is None:  # while being created
+            return None
+        if self.active_subscription:
+            return self.active_subscription
+        exps = self.subscription_set.filter(
+            state=Subscription.StateChoice.EXPIRE
         )
-
-    @property
-    def status__date(self) -> bool:
-        subs = self.active_subscription
-        return (subs is not None) and (subs.end_date > timezone.now())
+        if exps.exists():
+            return exps.first()
+        return None
 
     @property
     def active_system(self) -> bool:
-        return self.status__date and self.status__bandwidth
+        return bool(
+            self.active_subscription
+            and self.active_subscription.status__date
+            and self.active_subscription.status__bandwidth
+        )
 
     def v2ray__activate(self):
         UserMan().user__add(self.uuid, self.email)
+        UserActivateWH().send(self)
 
     def v2ray__deactivate(self):
         UserMan().user__rm(self.email)
@@ -114,14 +122,16 @@ class V2RayProfile(models.Model):
             return True
         return False
 
-    def update__v2ray(self):
-        if self.active_system and self.active_admin:
-            self.v2ray__activate()
-            self.v2ray_state = True
-        else:
-            self.v2ray__deactivate()
-            self.v2ray_state = False
-        self.v2ray_state_date = timezone.now()
+    def update__v2ray(self, force=False):
+        _active = self.active_system and self.active_admin
+        if force or (_active != self.v2ray_state):
+            if _active:
+                self.v2ray__activate()
+                self.v2ray_state = True
+            else:
+                self.v2ray__deactivate()
+                self.v2ray_state = False
+            self.v2ray_state_date = timezone.now()
 
     @classmethod
     def update__all(cls, force=False):
@@ -166,23 +176,63 @@ class Subscription(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(blank=True, null=True)
-
-    def activate(self):
-        self.state = self.StateChoice.ACTIVE
-        self.started_at = timezone.now()
-
-    def expire(self):
-        if self.state == self.StateChoice.ACTIVE:
-            self.state = self.StateChoice.EXPIRE
-            SubscriptionExpireWH().send(self)
+    expired_at = models.DateTimeField(blank=True, null=True)
+    usage_at_expire = models.JSONField(blank=True, null=True, editable=False)
 
     @property
-    def end_date(self) -> datetime:
+    def due_date(self) -> datetime:
         if self.started_at:
             v_ = self.started_at + datetime.timedelta(days=self.duration)
         else:
             v_ = None
         return v_
+
+    @property
+    def usage(self) -> json:
+        stat_man = StatMan()
+        if self.state == self.StateChoice.EXPIRE:
+            if self.usage_at_expire:
+                s_ = self.usage_at_expire
+            else:
+                s_ = stat_man.get__usage(
+                    self.user.email, self.started_at, self.expired_at
+                )
+                self.usage_at_expire = s_
+                self.save(update_fields=["usage_at_expire"])
+
+        elif self.state == self.StateChoice.ACTIVE:
+            s_ = stat_man.get__usage(self.user.email, self.started_at)
+        else:
+            s_ = {"downlink": 0, "uplink": 0}
+        res = {}
+        t_ = 0
+        for k_ in ("downlink", "uplink"):
+            res[k_ + "_bytes"] = s_.get(k_, 0)
+            res[k_] = Utils.helpers.size__bytes_to_hr(res[k_ + "_bytes"])
+            t_ += res[k_ + "_bytes"]
+        res["total_bytes"] = t_
+        res["total"] = Utils.helpers.size__bytes_to_hr(t_)
+        return res
+
+    @property
+    def status__bandwidth(self) -> bool:
+        return self.volume > self.usage["total_bytes"]
+
+    @property
+    def status__date(self) -> bool:
+        return self.due_date > timezone.now()
+
+    def activate(self):
+        self.state = self.StateChoice.ACTIVE
+        self.started_at = timezone.now()
+        self.expired_at = None
+        SubscriptionActivateWH().send(self)
+
+    def expire(self):
+        if self.state == self.StateChoice.ACTIVE:
+            self.state = self.StateChoice.EXPIRE
+            self.expired_at = timezone.now()
+            SubscriptionExpireWH().send(self)
 
     class Meta:
         ordering = ("-id",)

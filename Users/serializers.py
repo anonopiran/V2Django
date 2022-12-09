@@ -7,7 +7,7 @@ class SubscriptionSerializer(serializers.ModelSerializer):
     user = serializers.SlugRelatedField(
         slug_field="email", queryset=V2RayProfile.objects.all()
     )
-    end_date = serializers.DateTimeField(read_only=True)
+    due_date = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Subscription
@@ -16,7 +16,9 @@ class SubscriptionSerializer(serializers.ModelSerializer):
             "created_at",
             "started_at",
             "state",
-            "end_date",
+            "due_date",
+            "usage",
+            "expired_at",
         ]
         fields = read_only_fields + [
             "user",
@@ -28,7 +30,7 @@ class SubscriptionSerializer(serializers.ModelSerializer):
 class V2RayProfileSerializer(serializers.ModelSerializer):
     subscription_set = SubscriptionSerializer(read_only=True, many=True)
     active_subscription = SubscriptionSerializer(read_only=True)
-    used_bandwidth = serializers.JSONField(read_only=True)
+    active_or_latest_subscription = SubscriptionSerializer(read_only=True)
 
     class Meta:
         model = V2RayProfile
@@ -37,9 +39,7 @@ class V2RayProfileSerializer(serializers.ModelSerializer):
             "active_admin",
             "admin_message",
             "active_subscription",
-            "used_bandwidth",
-            "status__bandwidth",
-            "status__date",
             "subscription_set",
+            "active_or_latest_subscription",
         ]
         fields = read_only_fields + ["email", "uuid"]

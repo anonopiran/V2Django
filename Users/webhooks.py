@@ -52,3 +52,23 @@ class SubscriptionExpireWH(BaseWebHook):
 
         self.serializer = SubscriptionSerializer
         super().__init__()
+
+
+class UserActivateWH(BaseWebHook):
+    url = settings.WH_SUBSCRIPTION_ACTIVATE
+
+    def __init__(self) -> None:
+        from Users.serializers import V2RayProfileSerializer
+
+        self.serializer = V2RayProfileSerializer
+        super().__init__()
+
+
+class SubscriptionActivateWH(BaseWebHook):
+    url = settings.WH_SUBSCRIPTION_ACTIVATE
+
+    def __init__(self) -> None:
+        from Users.serializers import SubscriptionSerializer
+
+        self.serializer = SubscriptionSerializer
+        super().__init__()
