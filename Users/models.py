@@ -21,6 +21,8 @@ from Users.webhooks import (
     SubscriptionExpireWH,
     UserActivateWH,
     SubscriptionActivateWH,
+    UserCreateWH,
+    SubscriptionCreateWH,
 )
 from Utils.models import SignalDisconnect
 
@@ -101,7 +103,7 @@ class V2RayProfile(models.Model):
             with SignalDisconnect(
                 (
                     models.signals.post_save,
-                    dispatch_subscription_v2rayprofile__update_subscription,
+                    dispatch__subscription_v2rayprofile__update_subscription,
                     Subscription,
                 )
             ):
@@ -198,7 +200,14 @@ class Subscription(models.Model):
                     self.user.email, self.started_at, self.expired_at
                 )
                 self.usage_at_expire = s_
-                self.save(update_fields=["usage_at_expire"])
+                with SignalDisconnect(
+                    (
+                        models.signals.post_save,
+                        dispatch__subscription_v2rayprofile__update_subscription,
+                        Subscription,
+                    )
+                ):
+                    self.save(update_fields=["usage_at_expire"])
 
         elif self.state == self.StateChoice.ACTIVE:
             s_ = stat_man.get__usage(self.user.email, self.started_at)
@@ -254,14 +263,38 @@ def dispatch__v2rayprofile__update_v2ray(instance: V2RayProfile, **__):
     instance.update__v2ray()
 
 
+@receiver(pre_save, sender=V2RayProfile)
+def dispatch__v2rayprofile__create_wh_flag(instance: V2RayProfile, **__):
+    if instance.id is None:
+        instance.create_wh_flag = True
+
+
+@receiver(post_save, sender=V2RayProfile)
+def dispatch__v2rayprofile__create_wh(instance: V2RayProfile, **__):
+    if getattr(instance, "create_wh_flag", False):
+        UserCreateWH().send(instance)
+
+
+@receiver(pre_save, sender=Subscription)
+def dispatch__subscription__create_wh_flag(instance: Subscription, **__):
+    if instance.id is None:
+        instance.create_wh_flag = True
+
+
 @receiver(pre_delete, sender=Subscription)
-def dispatch_subscription__expire(instance: Subscription, **__):
+def dispatch__subscription__expire(instance: Subscription, **__):
     instance.expire()
 
 
 @receiver(post_delete, sender=Subscription)
 @receiver(post_save, sender=Subscription)
-def dispatch_subscription_v2rayprofile__update_subscription(
+def dispatch__subscription__create_wh(instance: Subscription, **__):
+    if getattr(instance, "create_wh_flag", False):
+        SubscriptionCreateWH().send(instance)
+
+
+@receiver(post_save, sender=Subscription)
+def dispatch__subscription_v2rayprofile__update_subscription(
     instance: Subscription, **__
 ):
     instance.user.save()

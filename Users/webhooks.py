@@ -27,10 +27,11 @@ class BaseWebHook:
         with self.client() as r_:
             try:
                 r_.post(self.url, json=data).raise_for_status()
-            except (
-                requests.exceptions.RequestException,
-                requests.exceptions.HTTPError,
-            ) as e:
+            except requests.exceptions.HTTPError as e:
+                logger.warning(
+                    f"error calling webhook at {self.url}: {e.response.json()}"
+                )
+            except requests.exceptions.RequestException as e:
                 logger.warning(f"error calling webhook at {self.url}: {e}")
 
 
@@ -55,7 +56,7 @@ class SubscriptionExpireWH(BaseWebHook):
 
 
 class UserActivateWH(BaseWebHook):
-    url = settings.WH_SUBSCRIPTION_ACTIVATE
+    url = settings.WH_USER_ACTIVATE
 
     def __init__(self) -> None:
         from Users.serializers import V2RayProfileSerializer
@@ -66,6 +67,26 @@ class UserActivateWH(BaseWebHook):
 
 class SubscriptionActivateWH(BaseWebHook):
     url = settings.WH_SUBSCRIPTION_ACTIVATE
+
+    def __init__(self) -> None:
+        from Users.serializers import SubscriptionSerializer
+
+        self.serializer = SubscriptionSerializer
+        super().__init__()
+
+
+class UserCreateWH(BaseWebHook):
+    url = settings.WH_USER_CREATE
+
+    def __init__(self) -> None:
+        from Users.serializers import V2RayProfileSerializer
+
+        self.serializer = V2RayProfileSerializer
+        super().__init__()
+
+
+class SubscriptionCreateWH(BaseWebHook):
+    url = settings.WH_SUBSCRIPTION_CREATE
 
     def __init__(self) -> None:
         from Users.serializers import SubscriptionSerializer
