@@ -35,6 +35,7 @@ class V2RayProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = V2RayProfile
         read_only_fields = [
+            "is_active",
             "active_system",
             "active_admin",
             "admin_message",

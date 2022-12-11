@@ -88,6 +88,10 @@ class V2RayProfile(models.Model):
             and self.active_subscription.status__bandwidth
         )
 
+    @property
+    def is_active(self) -> bool:
+        return self.active_system and self.active_admin
+
     def v2ray__activate(self):
         UserMan().user__add(self.uuid, self.email)
         UserActivateWH().send(self)

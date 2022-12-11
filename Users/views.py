@@ -1,6 +1,7 @@
 from rest_framework.mixins import (
     CreateModelMixin,
     RetrieveModelMixin,
+    DestroyModelMixin,
     UpdateModelMixin,
 )
 from rest_framework.permissions import AllowAny
@@ -21,7 +22,11 @@ class V2RayProfileViewSet(
 
 
 class SubscriptionViewSet(
-    CreateModelMixin, RetrieveModelMixin, GenericViewSet
+    CreateModelMixin,
+    RetrieveModelMixin,
+    UpdateModelMixin,
+    DestroyModelMixin,
+    GenericViewSet,
 ):
     queryset = Subscription.objects.all()
     serializer_class = SubscriptionSerializer
