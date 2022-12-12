@@ -104,27 +104,21 @@ class V2RayProfile(models.Model):
         if self.id is None:
             return False
         if not self.active_system:
-            with SignalDisconnect(
-                (
-                    models.signals.post_save,
-                    dispatch__subscription_v2rayprofile__update_subscription,
-                    Subscription,
+
+            exp = self.active_subscription
+            if exp:
+                exp.expire()
+                exp.save()
+            reserve = (
+                self.subscription_set.filter(
+                    state=Subscription.StateChoice.RESERVE
                 )
-            ):
-                exp = self.active_subscription
-                if exp:
-                    exp.expire()
-                    exp.save()
-                reserve = (
-                    self.subscription_set.filter(
-                        state=Subscription.StateChoice.RESERVE
-                    )
-                    .order_by("created_at")
-                    .first()
-                )
-                if reserve:
-                    reserve.activate()
-                    reserve.save()
+                .order_by("created_at")
+                .first()
+            )
+            if reserve:
+                reserve.activate()
+                reserve.save()
             return True
         return False
 
