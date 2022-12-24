@@ -1,11 +1,9 @@
 import logging
-from contextlib import contextmanager
-from typing import ContextManager, Type
+from abc import abstractmethod
 
 import requests
+from celery import shared_task
 from django.conf import settings
-from django.db.models import Model
-from rest_framework.serializers import Serializer
 from yarl import URL
 
 logger = logging.getLogger("django.server")
@@ -13,83 +11,67 @@ logger = logging.getLogger("django.server")
 
 class BaseWebHook:
     url: URL
-    serializer: Type[Serializer]
+    ignore_result = True
 
-    @contextmanager
-    def client(self) -> ContextManager[requests.Session]:
-        with requests.Session() as sess_:
-            yield sess_
+    def __init__(self, instance) -> None:
+        super().__init__()
+        self.instance = instance
 
-    def send(self, obj: Model):
+    @abstractmethod
+    def get_data(self, instance):
+        raise NotImplementedError
+
+    def send(self):
         if not self.url:
             return
-        data = self.serializer(obj).data
-        with self.client() as r_:
-            try:
-                r_.post(self.url, json=data).raise_for_status()
-            except requests.exceptions.HTTPError as e:
-                logger.warning(
-                    f"error calling webhook at {self.url}: {e.response.json()}"
-                )
-            except requests.exceptions.RequestException as e:
-                logger.warning(f"error calling webhook at {self.url}: {e}")
+        data = self.get_data(self.instance)
+        _request.delay(url=self.url.__str__(), data=data)
 
 
-class UserExpireWH(BaseWebHook):
+class BaseUserWH:
+    @staticmethod
+    def get_data(instance):
+        return {"email": instance.email, "id": instance.id}
+
+
+class BaseSubscriptionWH:
+    @staticmethod
+    def get_data(instance):
+        return {"email": instance.user.email, "id": instance.id}
+
+
+class UserExpireWH(BaseUserWH, BaseWebHook):
     url = settings.WH_USER_EXPIRE
 
-    def __init__(self) -> None:
-        from Users.serializers import V2RayProfileSerializer
 
-        self.serializer = V2RayProfileSerializer
-        super().__init__()
-
-
-class SubscriptionExpireWH(BaseWebHook):
+class SubscriptionExpireWH(BaseSubscriptionWH, BaseWebHook):
     url = settings.WH_SUBSCRIPTION_EXPIRE
 
-    def __init__(self) -> None:
-        from Users.serializers import SubscriptionSerializer
 
-        self.serializer = SubscriptionSerializer
-        super().__init__()
-
-
-class UserActivateWH(BaseWebHook):
+class UserActivateWH(BaseUserWH, BaseWebHook):
     url = settings.WH_USER_ACTIVATE
 
-    def __init__(self) -> None:
-        from Users.serializers import V2RayProfileSerializer
 
-        self.serializer = V2RayProfileSerializer
-        super().__init__()
-
-
-class SubscriptionActivateWH(BaseWebHook):
+class SubscriptionActivateWH(BaseSubscriptionWH, BaseWebHook):
     url = settings.WH_SUBSCRIPTION_ACTIVATE
 
-    def __init__(self) -> None:
-        from Users.serializers import SubscriptionSerializer
 
-        self.serializer = SubscriptionSerializer
-        super().__init__()
-
-
-class UserCreateWH(BaseWebHook):
+class UserCreateWH(BaseUserWH, BaseWebHook):
     url = settings.WH_USER_CREATE
 
-    def __init__(self) -> None:
-        from Users.serializers import V2RayProfileSerializer
 
-        self.serializer = V2RayProfileSerializer
-        super().__init__()
-
-
-class SubscriptionCreateWH(BaseWebHook):
+class SubscriptionCreateWH(BaseSubscriptionWH, BaseWebHook):
     url = settings.WH_SUBSCRIPTION_CREATE
 
-    def __init__(self) -> None:
-        from Users.serializers import SubscriptionSerializer
 
-        self.serializer = SubscriptionSerializer
-        super().__init__()
+@shared_task
+def _request(url, data):
+    with requests.Session() as r_:
+        try:
+            r_.post(url, json=data).raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            logger.warning(
+                f"error calling webhook at {url}: {e.response.json()}"
+            )
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"error calling webhook at {url}: {e}")

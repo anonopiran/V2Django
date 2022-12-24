@@ -355,6 +355,17 @@ setproctitle = ["setproctitle"]
 tornado = ["tornado (>=0.2)"]
 
 [[package]]
+name = "humanize"
+version = "4.4.0"
+description = "Python humanize utilities"
+category = "main"
+optional = false
+python-versions = ">=3.7"
+
+[package.extras]
+tests = ["freezegun", "pytest", "pytest-cov"]
+
+[[package]]
 name = "identify"
 version = "2.5.8"
 description = "File identification library for Python"
@@ -383,7 +394,7 @@ python-versions = ">=3.5"
 
 [[package]]
 name = "influxdb-client"
-version = "1.34.0"
+version = "1.35.0"
 description = "InfluxDB 2.0 Python client library"
 category = "main"
 optional = false
@@ -791,7 +802,7 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.10"
-content-hash = "b09740a114e19e8cd9e0c6d67e4b36b16f81d0b6aa6796241b8127a2eb3755d1"
+content-hash = "c7081c77f8332e8c7a2040e4aa0473f469b65d3868eac910535f0c9aaf17b871"
 
 [metadata.files]
 amqp = []
@@ -820,6 +831,7 @@ filelock = []
 flake8 = []
 flake8-pyproject = []
 gunicorn = []
+humanize = []
 identify = []
 idna = []
 inflection = []
