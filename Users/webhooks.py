@@ -31,13 +31,17 @@ class BaseWebHook:
 class BaseUserWH:
     @staticmethod
     def get_data(instance):
-        return {"email": instance.email, "id": instance.id}
+        from Users.serializers import V2RayProfileSerializer
+
+        return V2RayProfileSerializer(instance).data
 
 
 class BaseSubscriptionWH:
     @staticmethod
     def get_data(instance):
-        return {"email": instance.user.email, "id": instance.id}
+        from Users.serializers import SubscriptionSerializer
+
+        return SubscriptionSerializer(instance).data
 
 
 class UserExpireWH(BaseUserWH, BaseWebHook):
