@@ -24,7 +24,6 @@ from Users.webhooks import (
     UserCreateWH,
     SubscriptionCreateWH,
 )
-from Utils.models import SignalDisconnect
 
 logger = logging.getLogger("django.server")
 
@@ -128,29 +127,17 @@ class V2RayProfile(models.Model):
             return False
         exp = self.active_subscription
         if exp:
+            exp.disable__update_user_signal()
             exp.expire()
-            with SignalDisconnect(
-                (
-                    post_save,
-                    dispatch__subscription__update_v2rayprofile,
-                    Subscription,
-                )
-            ):
-                exp.save()
+            exp.save()
         reserve = self.subscription_set.filter(
             state=Subscription.StateChoice.RESERVE
         )
         if reserve.exists():
             reserve = reserve.earliest("id")
+            reserve.disable__update_user_signal()
             reserve.activate()
-            with SignalDisconnect(
-                (
-                    post_save,
-                    dispatch__subscription__update_v2rayprofile,
-                    Subscription,
-                )
-            ):
-                reserve.save()
+            reserve.save()
         return True
 
     def update__v2ray(self, force=False):
@@ -271,6 +258,14 @@ class Subscription(models.Model):
             }
             SubscriptionExpireWH(self).send()
 
+    def disable__update_user_signal(self):
+        # using signal.disconnect , made real mess
+        self.metadata.add(self.meta__disable_update_profile)
+
+    @property
+    def is_disabled__update_user_signal(self):
+        return self.meta__disable_update_profile in self.metadata
+
     # ======================== others
     def __str__(self):
         return self.user.email
@@ -315,5 +310,5 @@ def dispatch__subscription__create_wh(instance: Subscription, created, **__):
 @receiver(post_delete, sender=Subscription)
 @receiver(post_save, sender=Subscription)
 def dispatch__subscription__update_v2rayprofile(instance: Subscription, **__):
-    if instance.meta__disable_update_profile not in instance.metadata:
+    if not instance.is_disabled__update_user_signal:
         instance.user.save()
