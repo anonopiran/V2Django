@@ -91,6 +91,7 @@ DATABASES = {
         "DATABASE_DSN", default=f"sqlite:///{BASE_DIR}/storage/sqlite.db"
     )
 }
+# CACHES = {"default": env.cache_url("CACHE_URL", default=env.url("REDIS_URI"))}
 
 # Password validation
 # https://docs.djangoproject.com/en/4.1/ref/settings/#auth-password-validators
@@ -135,26 +136,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # app
 V2USER_URI = URL(env.str("V2USER_URI"))
 INFLUX_URI = URL(env.str("INFLUX_URI"))
-INFLUX_BUCKET_USER_STATS = env.str("INFLUX_BUCKET_USER_STATS")
+REDIS_URI = URL(env.str("REDIS_URI"))
+CELERY_BROKER_URL = env.str("CELERY_BROKER_URL", default=str(REDIS_URI))
 
-USER_DEFAULT_SUBS_DURATION = env.str("USER_DEFAULT_SUBS_DURATION", 30)
-USER_DEFAULT_SUBS_VOLUME = env.str("USER_DEFAULT_SUBS_VOLUME", "10Gb")
-USER_INIT_ON_START = env.bool("USER_INIT_ON_START", default=True)
-
-CELERY_BROKER_URL = env.str("CELERY_BROKER_URL")
-CELERY_INTERVAL_V2RAYPROFILE_UPDATE = env.int(
-    "CELERY_INTERVAL_V2RAYPROFILE_UPDATE", 60
+SUB_USAGE_UPDATE_TOPIC = env.str(
+    "SUB_USAGE_UPDATE_TOPIC", default="usage:update"
 )
-CELERY_BEAT_SCHEDULE = {
-    "task__v2rayprofile_update": {
-        "task": "Users.tasks.task__v2rayprofile_update",
-        "schedule": CELERY_INTERVAL_V2RAYPROFILE_UPDATE,
-    }
-}
 
-WH_USER_EXPIRE = URL(env.str("WH_USER_EXPIRE", ""))
-WH_SUBSCRIPTION_EXPIRE = URL(env.str("WH_SUBSCRIPTION_EXPIRE", ""))
-WH_USER_ACTIVATE = URL(env.str("WH_USER_ACTIVATE", ""))
-WH_SUBSCRIPTION_ACTIVATE = URL(env.str("WH_SUBSCRIPTION_ACTIVATE", ""))
-WH_USER_CREATE = URL(env.str("WH_USER_CREATE", ""))
-WH_SUBSCRIPTION_CREATE = URL(env.str("WH_SUBSCRIPTION_CREATE", ""))
+USER_DEFAULT_SUBS_VOLUME = env.str("USER_DEFAULT_SUBS_VOLUME", default="10Gb")
+USER_DEFAULT_SUBS_DURATION = env.int("USER_DEFAULT_SUBS_DURATION", default=30)
+STATE_INIT_ON_START = env.bool("STATE_INIT_ON_START", default=True)

@@ -1,29 +1,15 @@
-import json
 import logging
 import uuid
+from typing import Optional, Tuple
 
 from django.conf import settings
 from django.db import models
-from django.db.models.signals import (
-    post_delete,
-    post_save,
-    pre_save,
-    pre_delete,
-)
 from django.dispatch import receiver
 from django.utils import timezone
-from humanize import naturalsize
 
 import Utils.helpers
 from Users.manager import UserMan, StatMan
-from Users.webhooks import (
-    UserExpireWH,
-    SubscriptionExpireWH,
-    UserActivateWH,
-    SubscriptionActivateWH,
-    UserCreateWH,
-    SubscriptionCreateWH,
-)
+from V2Django.celery import app as celery_app
 
 logger = logging.getLogger("django.server")
 
@@ -40,20 +26,19 @@ class V2RayProfile(models.Model):
     )
 
     @property
-    def used_bandwidth(self):
+    def downlink(self) -> int:
         if self.active_or_latest_subscription:
-            return self.active_or_latest_subscription.usage
-        res = {}
-        for k_ in ("downlink", "uplink", "total"):
-            res[k_ + "_bytes"] = 0
-            res[k_] = naturalsize(0, binary=True)
-        return res
+            return self.active_or_latest_subscription.downlink
 
     @property
-    def due_date(self):
+    def uplink(self) -> int:
+        if self.active_or_latest_subscription:
+            return self.active_or_latest_subscription.uplink
+
+    @property
+    def due_date(self) -> timezone.datetime:
         if self.active_or_latest_subscription:
             return self.active_or_latest_subscription.due_date
-        return None
 
     @property
     def active_subscription(self):
@@ -80,24 +65,23 @@ class V2RayProfile(models.Model):
         return None
 
     @property
-    def active_system(self) -> bool:
+    def calc__active_system(self) -> bool:
         return bool(
             self.active_subscription
-            and self.active_subscription.status__date
-            and self.active_subscription.status__bandwidth
+            and self.active_subscription.calc__status
+            == Subscription.StateChoice.ACTIVE
         )
 
     @property
-    def is_active(self) -> bool:
-        return self.active_system and self.active_admin
+    def calc__active(self) -> bool:
+        return self.calc__active_system and self.active_admin
 
-    # ======================== flags
     @property
-    def flag__update_subs(self):
+    def condition__update_subs(self):
         if self.id is None:  # while being created so no any subs available
             return False
         if (
-            not self.active_system
+            not self.calc__active_system
             and self.subscription_set.filter(
                 state__in=[
                     Subscription.StateChoice.RESERVE,
@@ -110,40 +94,40 @@ class V2RayProfile(models.Model):
         return False
 
     @property
-    def flag__update_v2ray(self):
-        return self.is_active != self.v2ray_state
+    def condition__update_v2ray(self):
+        return self.calc__active != self.v2ray_state
 
     # ======================== handlers
     def v2ray__activate(self):
         UserMan().user__add(self.uuid, self.email)
-        UserActivateWH(self).send()
 
     def v2ray__deactivate(self):
         UserMan().user__rm(self.email)
-        UserExpireWH(self).send()
 
-    def update__subscription(self, force=False):
-        if not (force or self.flag__update_subs):
-            return False
+    def update__subscription(self, save=True):
+        if not self.condition__update_subs:
+            return False, None, None
         exp = self.active_subscription
         if exp:
-            exp.disable__update_user_signal()
             exp.expire()
-            exp.save()
+            if save:
+                exp.save()
         reserve = self.subscription_set.filter(
             state=Subscription.StateChoice.RESERVE
         )
         if reserve.exists():
-            reserve = reserve.earliest("id")
-            reserve.disable__update_user_signal()
-            reserve.activate()
-            reserve.save()
-        return True
+            res = reserve.earliest("id")
+            res.activate()
+            if save:
+                res.save()
+        else:
+            res = None
+        return True, exp, res
 
     def update__v2ray(self, force=False):
-        if not (force or self.flag__update_v2ray):
+        if not (self.condition__update_v2ray or force):
             return False
-        if self.is_active:
+        if self.calc__active:
             self.v2ray__activate()
             self.v2ray_state = True
         else:
@@ -153,29 +137,37 @@ class V2RayProfile(models.Model):
         return True
 
     @classmethod
-    def update__all(cls, force=False):
-        if force:
-            users = cls.objects.all()
-        else:
-            users = cls.objects.filter(
-                active_admin=True,
-                subscription__state=Subscription.StateChoice.ACTIVE,
+    def update__subscription__many(cls, query=None, save=True):
+        query = query or {}
+        qs = cls.objects.filter(**query)
+        i_set = []
+        e_set = []
+        a_set = []
+        for q_ in qs:
+            i_, e_, a_ = q_.update__subscription(save=False)
+            i_set.append(i_)
+            e_set.append(e_)
+            a_set.append(a_)
+        if save:
+            e_set_updated = {x for x in e_set if x}
+            a_set_updated = {x for x in a_set if x}
+            Subscription.objects.bulk_update(
+                e_set_updated, Subscription.fieldset_expire
             )
-
-        update_list = set()
-        for u_ in users:
-            flag1 = u_.update__subscription()
-            flag2 = u_.update__v2ray()
-            if flag1 or flag2:
-                update_list.add(u_)
-        cls.objects.bulk_update(
-            update_list, ["v2ray_state", "v2ray_state_date"]
-        )
-        logger.info(f"{len(update_list)} users updated")
+            Subscription.objects.bulk_update(
+                a_set_updated, Subscription.fieldset_active
+            )
+            qs_update = {
+                x for i, x in zip(i_set, qs) if i and x.update__v2ray()
+            }
+            cls.objects.bulk_update(qs_update, cls.fieldset_v2ray)
+        return i_set, qs, e_set, a_set
 
     # ======================== others
     def __str__(self):
         return self.email
+
+    fieldset_v2ray = ["v2ray_state", "v2ray_state_date"]
 
 
 class Subscription(models.Model):
@@ -194,121 +186,143 @@ class Subscription(models.Model):
     state = models.CharField(
         max_length=1, choices=StateChoice.choices, default=StateChoice.RESERVE
     )
+    downlink = models.PositiveBigIntegerField(default=0, editable=False)
+    uplink = models.PositiveBigIntegerField(default=0, editable=False)
+    due_date = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(blank=True, null=True)
     expired_at = models.DateTimeField(blank=True, null=True)
-    usage_at_expire = models.JSONField(blank=True, null=True, editable=False)
+
+    task_expire_at_due_date_uid = models.UUIDField(
+        null=True, blank=True, editable=False
+    )
 
     @property
-    def due_date(self) -> timezone.datetime:
+    def calc__status_bandwidth(self) -> bool:
+        return self.volume > self.downlink + self.uplink
+
+    @property
+    def calc__status_date(self) -> bool:
+        return self.due_date and self.due_date > timezone.now()
+
+    @property
+    def calc__status(self):
+        if self.state == self.StateChoice.RESERVE:
+            return self.StateChoice.RESERVE
+        elif self.calc__status_bandwidth and self.calc__status_date:
+            return self.StateChoice.ACTIVE
+        else:
+            return self.StateChoice.EXPIRE
+
+    @property
+    def calc__due_date(self) -> Optional[timezone.datetime]:
         if self.started_at:
-            v_ = self.started_at + timezone.timedelta(days=self.duration)
-        else:
-            v_ = None
-        return v_
+            return self.started_at + timezone.timedelta(days=self.duration)
+        return None
 
     @property
-    def usage(self) -> json:
+    def calc__usage(self) -> Tuple[int, int]:
+        _down = 0
+        _up = 0
         stat_man = StatMan()
-        if self.state == self.StateChoice.EXPIRE:
-            if self.usage_at_expire:
-                s_ = self.usage_at_expire
-            else:
-                s_ = stat_man.get__usage(
-                    self.user.email, self.started_at, self.expired_at
-                )
-        elif self.state == self.StateChoice.ACTIVE:
-            s_ = stat_man.get__usage(self.user.email, self.started_at)
-        else:
-            s_ = {"downlink": 0, "uplink": 0}
-        res = {}
-        t_ = 0
-        for k_ in ("downlink", "uplink"):
-            res[k_ + "_bytes"] = s_.get(k_, 0)
-            res[k_] = naturalsize(res[k_ + "_bytes"], binary=True)
-            t_ += res[k_ + "_bytes"]
-        res["total_bytes"] = t_
-        res["total"] = naturalsize(t_, binary=True)
-        return res
-
-    @property
-    def status__bandwidth(self) -> bool:
-        return self.volume > self.usage["total_bytes"]
-
-    @property
-    def status__date(self) -> bool:
-        return self.due_date > timezone.now()
+        if self.started_at:
+            st = stat_man.get__usage(
+                self.user.email, self.started_at, self.expired_at
+            )
+            for s_ in st:
+                if s_["direction"] == "downlink":
+                    _down = s_["value"]
+                elif s_["direction"] == "uplink":
+                    _up = s_["value"]
+        return _down, _up
 
     # ======================== handlers
     def activate(self, force=False):
         if force or self.state == self.StateChoice.RESERVE:
             self.state = self.StateChoice.ACTIVE
             self.started_at = timezone.now()
+            self.update__due_date()
             self.expired_at = None
-            SubscriptionActivateWH(self).send()
 
     def expire(self, force=False):
         if force or self.state == self.StateChoice.ACTIVE:
             self.state = self.StateChoice.EXPIRE
             self.expired_at = timezone.now()
-            uae = self.usage
-            self.usage_at_expire = {
-                "downlink": uae["downlink_bytes"],
-                "uplink": uae["uplink_bytes"],
-            }
-            SubscriptionExpireWH(self).send()
+            self.cancel__due_date_task()
 
-    def disable__update_user_signal(self):
-        # using signal.disconnect , made real mess
-        self.metadata.add(self.meta__disable_update_profile)
+    def update__usage(self):
+        self.downlink, self.uplink = self.calc__usage
 
-    @property
-    def is_disabled__update_user_signal(self):
-        return self.meta__disable_update_profile in self.metadata
+    def update__due_date(self):
+        self.due_date = self.calc__due_date
+
+    def cancel__due_date_task(self):
+        _uid = self.task_expire_at_due_date_uid
+        if _uid:
+            celery_app.control.revoke(task_id=_uid, terminate=True)
+            self.task_expire_at_due_date_uid = None
+            return True
+        return False
+
+    def update__due_date_task(self):
+        task = celery_app.signature("Users.tasks.expire_at_due_date")
+        self.cancel__due_date_task()
+        if self.state == self.StateChoice.ACTIVE:
+            t_ = task.apply_async(
+                (self.id,),
+                eta=self.due_date,
+            )
+            self.task_expire_at_due_date_uid = t_.id
+
+    @classmethod
+    def update__usage__many(cls, query: dict = None, save=True):
+        query = query or {}
+        qs = cls.objects.filter(**query)
+        for q_ in qs:
+            q_.update__usage()
+        if save:
+            cls.objects.bulk_update(qs, cls.fieldset_usage)
+        return qs
 
     # ======================== others
     def __str__(self):
-        return self.user.email
+        return f"{self.id}:{self.user.email}"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.metadata = set()
-
-    meta__disable_update_profile = "dis_signal:update_profile"
+    fieldset_active = [
+        "state",
+        "started_at",
+        "due_date",
+        "task_expire_at_due_date_uid",
+        "expired_at",
+    ]
+    fieldset_expire = ["state", "expired_at", "task_expire_at_due_date_uid"]
+    fieldset_usage = ["downlink", "uplink"]
+    fieldset_due_date = ["due_date", "task_expire_at_due_date_uid"]
 
 
 # ============================================================================================================
 # signals
 # ============================================================================================================
-@receiver(pre_save, sender=V2RayProfile)
-def dispatch__v2rayprofile__update_subscription(instance: V2RayProfile, **__):
-    instance.update__subscription()
-
-
-@receiver(pre_save, sender=V2RayProfile)
+# @receiver(pre_save, sender=V2RayProfile)
+# def dispatch__v2rayprofile__update_subscription(instance: V2RayProfile, **__):
+#     instance.update__subscription()
+#
+#
+@receiver(models.signals.pre_save, sender=V2RayProfile)
 def dispatch__v2rayprofile__update_v2ray(instance: V2RayProfile, **__):
     instance.update__v2ray()
 
 
-@receiver(post_save, sender=V2RayProfile)
-def dispatch__v2rayprofile__create_wh(instance: V2RayProfile, created, **__):
-    if created:
-        UserCreateWH(instance).send()
+@receiver(models.signals.pre_save, sender=Subscription)
+def dispatch__subscription__update_due_date(instance: Subscription, **__):
+    instance.update__due_date()
 
 
-@receiver(pre_delete, sender=Subscription)
-def dispatch__subscription__expire(instance: Subscription, **__):
-    instance.expire()
-
-
-@receiver(post_save, sender=Subscription)
-def dispatch__subscription__create_wh(instance: Subscription, created, **__):
-    if created:
-        SubscriptionCreateWH(instance).send()
-
-
-@receiver(post_delete, sender=Subscription)
-@receiver(post_save, sender=Subscription)
-def dispatch__subscription__update_v2rayprofile(instance: Subscription, **__):
-    if not instance.is_disabled__update_user_signal:
+@receiver(models.signals.post_delete, sender=Subscription)
+@receiver(models.signals.post_save, sender=Subscription)
+def dispatch__subscription__update_v2rayprofile(
+    instance: Subscription, created=None, **__
+):
+    if created is None or created:
+        instance.user.update__subscription(save=True)
         instance.user.save()

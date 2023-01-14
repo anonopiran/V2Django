@@ -7,4 +7,4 @@ from V2Django.management.commands.base.celery_base import (
 
 class Command(CeleryBaseCommand, BaseCommand):
     help = "Start a celery worker"
-    _cmd_run = "celery -A V2Django worker"
+    _cmd_run = "celery -A V2Django worker --statedb=./storage/worker.state"
