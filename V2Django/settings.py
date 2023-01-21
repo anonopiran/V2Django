@@ -43,9 +43,11 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django_filters",
     "rest_framework",
     "drf_spectacular",
     "V2Django",
+    "Upstream",
     "Users",
 ]
 
@@ -134,14 +136,10 @@ STATIC_ROOT = env.path("STATIC_ROOT", default=BASE_DIR / "statics")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # app
-V2USER_URI = URL(env.str("V2USER_URI"))
 INFLUX_URI = URL(env.str("INFLUX_URI"))
-REDIS_URI = URL(env.str("REDIS_URI"))
-CELERY_BROKER_URL = env.str("CELERY_BROKER_URL", default=str(REDIS_URI))
-
-SUB_USAGE_UPDATE_TOPIC = env.str(
-    "SUB_USAGE_UPDATE_TOPIC", default="usage:update"
-)
+RABBIT_URI = URL(env.str("RABBIT_URI"))
+CELERY_BROKER_URL = env.str("CELERY_BROKER_URL", default=str(RABBIT_URI))
+SUB_USAGE_EXCHANGE = env.str("SUB_USAGE_EXCHANGE", default="v2fly-usage")
 
 USER_DEFAULT_SUBS_VOLUME = env.str("USER_DEFAULT_SUBS_VOLUME", default="10Gb")
 USER_DEFAULT_SUBS_DURATION = env.int("USER_DEFAULT_SUBS_DURATION", default=30)

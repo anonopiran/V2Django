@@ -3,7 +3,7 @@ from Users.models import Subscription
 
 
 class Command(BaseCommand):
-    help = "Update subscription usage"
+    help = "Update subscription due date notification task"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -23,7 +23,7 @@ class Command(BaseCommand):
                     state__in=Subscription.StateChoice.EXPIRE
                 )
             )
-        Subscription.update__usage__many(query)
+        Subscription.update__due_date_notification__many(query)
         for q_ in query:
             q_.save()
-        self.stdout.write(self.style.SUCCESS(f"{len(query)} usages updated"))
+        self.stdout.write(self.style.SUCCESS(f"{len(query)} tasks updated"))

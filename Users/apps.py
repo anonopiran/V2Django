@@ -12,21 +12,25 @@ class UsersConfig(AppConfig):
 
     @staticmethod
     def _init_task():
-        from Users.models import V2RayProfile, Subscription
+        from Users.models import Subscription
 
-        v2r_q = V2RayProfile.objects.all()
-        for q_ in v2r_q:
-            q_.update__v2ray(force=True)
-        V2RayProfile.objects.bulk_update(v2r_q, V2RayProfile.fieldset_v2ray)
-        logger.warning(f"{len(v2r_q)} user v2ray updated")
-        sub_q = Subscription.update__usage__many(
-            {"state": Subscription.StateChoice.ACTIVE}
+        query = Subscription.objects.filter(
+            state=Subscription.StateChoice.ACTIVE
         )
-        logger.warning(f"{len(sub_q)} usages updated")
-        u_, _, _, _ = V2RayProfile.update__subscription__many(
-            {"subscription__state": Subscription.StateChoice.ACTIVE}
+        Subscription.update__usage__many(query)
+        for q_ in query:
+            q_.save()
+            if q_.is_expired:
+                logger.info(f"{q_} expired [usage]")
+        logger.info(f"{len(query)} usages updated")
+        query = Subscription.objects.filter(
+            state=Subscription.StateChoice.ACTIVE
         )
-        logger.warning(f"{sum(u_)} user states affected")
+        Subscription.update__state__many(query)
+        for q_ in query:
+            q_.save()
+            if q_.is_expired:
+                logger.info(f"{q_} expired [due]")
 
     def ready(self):
         from django.conf import settings

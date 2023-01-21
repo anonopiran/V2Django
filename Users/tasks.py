@@ -9,12 +9,15 @@ logger = get_task_logger(__name__)
 @shared_task
 def expire_at_due_date(subs_id):
     s_ = Subscription.objects.get(id=subs_id)
-    u_ = s_.user
-    i_, o_, n_ = u_.update__subscription(save=True)
-    u_.save()
-    if i_:
-        logger.info(
-            f"user {u_} state updated: old-subs:{o_} new-subs:{n_} v2ray:{u_.v2ray_state}"
-        )
+    if s_.is_expired:
+        logger.warning(f"subs {s_} is already expired!")
     else:
-        logger.warning(f"user {u_} due date didn't affect state!")
+        s_.update__state()
+        if not s_.is_expired:
+            logger.warning(
+                f"subs {s_} didn't expire at due date! creating new task"
+            )
+            s_.update__due_date_notification()
+        else:
+            logger.info(f"subs {s_} expired")
+        s_.save()

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import uuid
 from typing import Optional, Tuple
@@ -6,15 +8,19 @@ from django.conf import settings
 from django.db import models
 from django.dispatch import receiver
 from django.utils import timezone
+from django_fsm import FSMField, transition
 
 import Utils.helpers
-from Users.manager import UserMan, StatMan
+from Users.manager import StatMan
+from Utils.models import SideEffectMixin
 from V2Django.celery import app as celery_app
+from tracking_model import TrackingModelMixin
+from Upstream.models import Server
 
 logger = logging.getLogger("django.server")
 
 
-class V2RayProfile(models.Model):
+class V2RayProfile(SideEffectMixin, TrackingModelMixin, models.Model):
     email = models.EmailField(unique=True)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
     active_admin = models.BooleanField(default=True)
@@ -26,151 +32,104 @@ class V2RayProfile(models.Model):
     )
 
     @property
-    def downlink(self) -> int:
-        if self.active_or_latest_subscription:
-            return self.active_or_latest_subscription.downlink
-
-    @property
-    def uplink(self) -> int:
-        if self.active_or_latest_subscription:
-            return self.active_or_latest_subscription.uplink
-
-    @property
-    def due_date(self) -> timezone.datetime:
-        if self.active_or_latest_subscription:
-            return self.active_or_latest_subscription.due_date
-
-    @property
-    def active_subscription(self):
-        if self.id is None:  # while being created
-            return None
-        s_ = self.subscription_set.filter(
-            state=Subscription.StateChoice.ACTIVE
-        )
-        if s_.exists():
+    def active_subscription(self) -> Optional[Subscription]:
+        s_ = self._subscription_state_filter(Subscription.StateChoice.ACTIVE)
+        if s_ and s_.exists():
             return s_.get()
         return None
 
     @property
-    def active_or_latest_subscription(self):
-        if self.id is None:  # while being created
-            return None
-        if self.active_subscription:
-            return self.active_subscription
-        exps = self.subscription_set.filter(
-            state=Subscription.StateChoice.EXPIRE
+    def reserve_subscription(self) -> models.QuerySet[Subscription]:
+        return self._subscription_state_filter(
+            Subscription.StateChoice.RESERVE
         )
+
+    @property
+    def expired_subscription(self) -> models.QuerySet[Subscription]:
+        return self._subscription_state_filter(Subscription.StateChoice.EXPIRE)
+
+    @property
+    def active_or_latest_subscription(self) -> Optional[Subscription]:
+        act = self.active_subscription
+        if act:
+            return act
+        exps = self.expired_subscription
         if exps.exists():
             return exps.latest("id")
         return None
 
     @property
-    def calc__active_system(self) -> bool:
-        return bool(
-            self.active_subscription
-            and self.active_subscription.calc__status
-            == Subscription.StateChoice.ACTIVE
-        )
+    def active_system(self) -> bool:
+        act = self.active_subscription
+        return bool(act)
 
     @property
-    def calc__active(self) -> bool:
-        return self.calc__active_system and self.active_admin
-
-    @property
-    def condition__update_subs(self):
-        if self.id is None:  # while being created so no any subs available
-            return False
-        if (
-            not self.calc__active_system
-            and self.subscription_set.filter(
-                state__in=[
-                    Subscription.StateChoice.RESERVE,
-                    Subscription.StateChoice.ACTIVE,
-                ]
-            ).exists()
-        ):
-            # user is not active but has an active subs (that should not) or has reserved (that should be activated)
-            return True
-        return False
-
-    @property
-    def condition__update_v2ray(self):
-        return self.calc__active != self.v2ray_state
+    def is_active(self) -> bool:
+        return self.active_system and self.active_admin
 
     # ======================== handlers
-    def v2ray__activate(self):
-        UserMan().user__add(self.uuid, self.email)
-
-    def v2ray__deactivate(self):
-        UserMan().user__rm(self.email)
-
-    def update__subscription(self, save=True):
-        if not self.condition__update_subs:
-            return False, None, None
-        exp = self.active_subscription
-        if exp:
-            exp.expire()
-            if save:
-                exp.save()
-        reserve = self.subscription_set.filter(
-            state=Subscription.StateChoice.RESERVE
-        )
-        if reserve.exists():
-            res = reserve.earliest("id")
-            res.activate()
-            if save:
-                res.save()
+    def update__subs(self, save=True) -> Optional[Subscription]:
+        act = self.active_subscription
+        if act:
+            logger.debug(
+                f"user {self} has an active subscription. doing nothing..."
+            )
+            return None
         else:
-            res = None
-        return True, exp, res
+            logger.debug(f"user {self} has not any active subscription")
+            res = self.reserve_subscription
+            if res.exists():
+                act: Subscription = res.earliest("id")
+                act.activate()
+                logger.info(f"subscription {act} activated for user {self}")
+                if save:
+                    act.save()
+            return act
 
     def update__v2ray(self, force=False):
-        if not (self.condition__update_v2ray or force):
-            return False
-        if self.calc__active:
-            self.v2ray__activate()
+        changed = False
+        if self.is_active and (not self.v2ray_state or force):
+            Server.user__add__many(self.uuid, self.email)
             self.v2ray_state = True
-        else:
-            self.v2ray__deactivate()
+            changed = True
+        elif (not self.is_active) and (self.v2ray_state or force):
+            Server.user__rm__many(self.email)
             self.v2ray_state = False
-        self.v2ray_state_date = timezone.now()
-        return True
+            changed = True
+        if changed:
+            self.v2ray_state_date = timezone.now()
+        return changed
+
+    def apply__side_effects(self):
+        changes = set()
+        if "active_admin" in set(self.tracker.changed.keys()):
+            if self.update__v2ray():
+                changes.add("v2ray_state")
+                changes.add("v2ray_state_date")
+        return changes
 
     @classmethod
-    def update__subscription__many(cls, query=None, save=True):
-        query = query or {}
-        qs = cls.objects.filter(**query)
-        i_set = []
-        e_set = []
-        a_set = []
-        for q_ in qs:
-            i_, e_, a_ = q_.update__subscription(save=False)
-            i_set.append(i_)
-            e_set.append(e_)
-            a_set.append(a_)
-        if save:
-            e_set_updated = {x for x in e_set if x}
-            a_set_updated = {x for x in a_set if x}
-            Subscription.objects.bulk_update(
-                e_set_updated, Subscription.fieldset_expire
-            )
-            Subscription.objects.bulk_update(
-                a_set_updated, Subscription.fieldset_active
-            )
-            qs_update = {
-                x for i, x in zip(i_set, qs) if i and x.update__v2ray()
-            }
-            cls.objects.bulk_update(qs_update, cls.fieldset_v2ray)
-        return i_set, qs, e_set, a_set
+    def update__v2ray__many(
+        cls, queryset: models.QuerySet[V2RayProfile], force=False
+    ):
+        flag = []
+        for c_, q_ in enumerate(queryset):
+            flag.append(q_.update__v2ray(force=force))
+        return flag
 
     # ======================== others
     def __str__(self):
         return self.email
 
-    fieldset_v2ray = ["v2ray_state", "v2ray_state_date"]
+    def _subscription_state_filter(
+        self, state
+    ) -> models.QuerySet[Subscription]:
+        return self.subscription_set.filter(state=state)
+
+    TRACKED_FIELDS = ["active_admin"]
 
 
-class Subscription(models.Model):
+class Subscription(SideEffectMixin, TrackingModelMixin, models.Model):
     class StateChoice(models.TextChoices):
         RESERVE = "0", "Reserve"
         ACTIVE = "1", "Active"
@@ -183,14 +142,17 @@ class Subscription(models.Model):
             settings.USER_DEFAULT_SUBS_VOLUME
         )
     )
-    state = models.CharField(
-        max_length=1, choices=StateChoice.choices, default=StateChoice.RESERVE
+    state = FSMField(
+        max_length=1,
+        choices=StateChoice.choices,
+        default=StateChoice.RESERVE,
+        protected=True,
     )
     downlink = models.PositiveBigIntegerField(default=0, editable=False)
     uplink = models.PositiveBigIntegerField(default=0, editable=False)
-    due_date = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(blank=True, null=True)
+    due_date = models.DateTimeField(blank=True, null=True, editable=False)
     expired_at = models.DateTimeField(blank=True, null=True)
 
     task_expire_at_due_date_uid = models.UUIDField(
@@ -204,21 +166,6 @@ class Subscription(models.Model):
     @property
     def calc__status_date(self) -> bool:
         return self.due_date and self.due_date > timezone.now()
-
-    @property
-    def calc__status(self):
-        if self.state == self.StateChoice.RESERVE:
-            return self.StateChoice.RESERVE
-        elif self.calc__status_bandwidth and self.calc__status_date:
-            return self.StateChoice.ACTIVE
-        else:
-            return self.StateChoice.EXPIRE
-
-    @property
-    def calc__due_date(self) -> Optional[timezone.datetime]:
-        if self.started_at:
-            return self.started_at + timezone.timedelta(days=self.duration)
-        return None
 
     @property
     def calc__usage(self) -> Tuple[int, int]:
@@ -236,37 +183,58 @@ class Subscription(models.Model):
                     _up = s_["value"]
         return _down, _up
 
-    # ======================== handlers
-    def activate(self, force=False):
-        if force or self.state == self.StateChoice.RESERVE:
-            self.state = self.StateChoice.ACTIVE
-            self.started_at = timezone.now()
-            self.update__due_date()
-            self.expired_at = None
+    @property
+    def is_expired(self):
+        return self.state == self.StateChoice.EXPIRE
 
-    def expire(self, force=False):
-        if force or self.state == self.StateChoice.ACTIVE:
-            self.state = self.StateChoice.EXPIRE
-            self.expired_at = timezone.now()
-            self.cancel__due_date_task()
+    # ======================== handlers
+    @transition(
+        field=state, source=StateChoice.RESERVE, target=StateChoice.ACTIVE
+    )
+    def activate(self):
+        self.started_at = timezone.now()
+
+    @transition(
+        field=state,
+        source=[StateChoice.RESERVE, StateChoice.ACTIVE],
+        target=StateChoice.EXPIRE,
+    )
+    def expire(self):
+        self.expired_at = timezone.now()
+        self.cancel__due_date_notification()
+        self.FLAG__JUST_EXPIRED = True
+
+    def update__state(self) -> bool:
+        flag = False
+        if self.state == self.StateChoice.RESERVE:
+            pass
+        elif self.state == self.StateChoice.ACTIVE:
+            if not (self.calc__status_bandwidth and self.calc__status_date):
+                self.expire()
+                flag = True
+        elif self.state == self.StateChoice.EXPIRE:
+            pass
+        return flag
 
     def update__usage(self):
         self.downlink, self.uplink = self.calc__usage
 
     def update__due_date(self):
-        self.due_date = self.calc__due_date
+        self.due_date = (
+            self.started_at + timezone.timedelta(days=self.duration)
+            if self.started_at
+            else None
+        )
 
-    def cancel__due_date_task(self):
+    def cancel__due_date_notification(self):
         _uid = self.task_expire_at_due_date_uid
         if _uid:
-            celery_app.control.revoke(task_id=_uid, terminate=True)
+            celery_app.control.revoke(task_id=_uid)
             self.task_expire_at_due_date_uid = None
-            return True
-        return False
 
-    def update__due_date_task(self):
+    def update__due_date_notification(self):
         task = celery_app.signature("Users.tasks.expire_at_due_date")
-        self.cancel__due_date_task()
+        self.cancel__due_date_notification()
         if self.state == self.StateChoice.ACTIVE:
             t_ = task.apply_async(
                 (self.id,),
@@ -274,55 +242,72 @@ class Subscription(models.Model):
             )
             self.task_expire_at_due_date_uid = t_.id
 
+    def apply__side_effects(self):
+        changes = set()
+        if {"duration", "started_at"}.intersection(
+            set(self.tracker.changed.keys())
+        ):
+            self.update__due_date()
+            changes.add("due_date")
+        if {"due_date", "volume", "downlink", "uplink"}.intersection(
+            set(self.tracker.changed.keys())
+        ):
+            if self.update__state():
+                changes.add("state")
+                changes.add("expired_at")
+        if "due_date" in set(self.tracker.changed.keys()):
+            self.update__due_date_notification()
+            changes.add("task_expire_at_due_date_uid")
+        return changes
+
     @classmethod
-    def update__usage__many(cls, query: dict = None, save=True):
-        query = query or {}
-        qs = cls.objects.filter(**query)
-        for q_ in qs:
+    def update__usage__many(cls, queryset: models.QuerySet[Subscription]):
+        for q_ in queryset:
             q_.update__usage()
-        if save:
-            cls.objects.bulk_update(qs, cls.fieldset_usage)
-        return qs
+
+    @classmethod
+    def update__state__many(cls, queryset: models.QuerySet[Subscription]):
+        for q_ in queryset:
+            q_.update__state()
+
+    @classmethod
+    def update__due_date_notification__many(
+        cls, queryset: models.QuerySet[Subscription]
+    ):
+        for q_ in queryset:
+            q_.update__due_date_notification()
 
     # ======================== others
     def __str__(self):
         return f"{self.id}:{self.user.email}"
 
-    fieldset_active = [
-        "state",
+    FLAG__JUST_EXPIRED = False
+    TRACKED_FIELDS = [
+        "duration",
         "started_at",
         "due_date",
-        "task_expire_at_due_date_uid",
-        "expired_at",
+        "volume",
+        "downlink",
+        "uplink",
     ]
-    fieldset_expire = ["state", "expired_at", "task_expire_at_due_date_uid"]
-    fieldset_usage = ["downlink", "uplink"]
-    fieldset_due_date = ["due_date", "task_expire_at_due_date_uid"]
 
 
-# ============================================================================================================
+# =======================================
 # signals
-# ============================================================================================================
-# @receiver(pre_save, sender=V2RayProfile)
-# def dispatch__v2rayprofile__update_subscription(instance: V2RayProfile, **__):
-#     instance.update__subscription()
-#
-#
-@receiver(models.signals.pre_save, sender=V2RayProfile)
-def dispatch__v2rayprofile__update_v2ray(instance: V2RayProfile, **__):
-    instance.update__v2ray()
+# =======================================
+@receiver(models.signals.pre_delete, sender=Subscription)
+def _dispatch__subscription__pre_delete(instance: Subscription, **_):
+    if instance.state != instance.StateChoice.EXPIRE:
+        instance.expire()
 
 
-@receiver(models.signals.pre_save, sender=Subscription)
-def dispatch__subscription__update_due_date(instance: Subscription, **__):
-    instance.update__due_date()
-
-
-@receiver(models.signals.post_delete, sender=Subscription)
 @receiver(models.signals.post_save, sender=Subscription)
-def dispatch__subscription__update_v2rayprofile(
-    instance: Subscription, created=None, **__
+@receiver(models.signals.post_delete, sender=Subscription)
+def _dispatch__subscription__notify_user(
+    instance: Subscription, created=None, **_
 ):
-    if created is None or created:
-        instance.user.update__subscription(save=True)
-        instance.user.save()
+    if created or instance.FLAG__JUST_EXPIRED:
+        u = instance.user
+        u.update__subs(save=True)
+        u.update__v2ray()
+        u.save()
