@@ -1,6 +1,13 @@
 from rest_framework import serializers
 
 from Users.models import Subscription, V2RayProfile
+from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.openapi import OpenApiTypes
+
+
+@extend_schema_field(OpenApiTypes.DECIMAL)
+class PrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
+    pass
 
 
 class SubscriptionSerializer(serializers.ModelSerializer):
@@ -28,8 +35,12 @@ class SubscriptionSerializer(serializers.ModelSerializer):
 
 
 class V2RayProfileSerializer(serializers.ModelSerializer):
-    active_subscription = SubscriptionSerializer(read_only=True)
-    active_or_latest_subscription = SubscriptionSerializer(read_only=True)
+    active_subscription = PrimaryKeyRelatedField(
+        read_only=True, allow_null=True
+    )
+    active_or_latest_subscription = PrimaryKeyRelatedField(
+        read_only=True, allow_null=True
+    )
 
     class Meta:
         model = V2RayProfile
@@ -41,5 +52,7 @@ class V2RayProfileSerializer(serializers.ModelSerializer):
             "admin_message",
             "active_subscription",
             "active_or_latest_subscription",
+            "expired_subscription_count",
+            "reserved_subscription_count",
         ]
         fields = read_only_fields + ["email", "uuid"]

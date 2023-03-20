@@ -9,18 +9,20 @@ from django.db import models
 from django.dispatch import receiver
 from django.utils import timezone
 from django_fsm import FSMField, transition
+from tracking_model import TrackingModelMixin
 
 import Utils.helpers
-from Users.manager import StatMan
-from Utils.models import SideEffectMixin
-from V2Django.celery import app as celery_app
-from tracking_model import TrackingModelMixin
 from Upstream.models import Server
+from Users.manager import StatMan
+from Utils.models import SideEffectMixin, NotifierMixin
+from V2Django.celery import app as celery_app
 
 logger = logging.getLogger("django.server")
 
 
-class V2RayProfile(SideEffectMixin, TrackingModelMixin, models.Model):
+class V2RayProfile(
+    NotifierMixin, SideEffectMixin, TrackingModelMixin, models.Model
+):
     email = models.EmailField(unique=True)
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
     active_admin = models.BooleanField(default=True)
@@ -67,6 +69,18 @@ class V2RayProfile(SideEffectMixin, TrackingModelMixin, models.Model):
     def is_active(self) -> bool:
         return self.active_system and self.active_admin
 
+    @property
+    def expired_subscription_count(self) -> int:
+        return self.subscription_set.filter(
+            state=Subscription.StateChoice.EXPIRE
+        ).count()
+
+    @property
+    def reserved_subscription_count(self) -> int:
+        return self.subscription_set.filter(
+            state=Subscription.StateChoice.RESERVE
+        ).count()
+
     # ======================== handlers
     def update__subs(self, save=True) -> Optional[Subscription]:
         act = self.active_subscription
@@ -98,6 +112,14 @@ class V2RayProfile(SideEffectMixin, TrackingModelMixin, models.Model):
             changed = True
         if changed:
             self.v2ray_state_date = timezone.now()
+            self.add_notification(
+                "user.update.state",
+                {
+                    "email": self.email,
+                    "uuid": str(self.uuid),
+                    "state": self.v2ray_state,
+                },
+            )
         return changed
 
     def apply__side_effects(self):
@@ -107,15 +129,6 @@ class V2RayProfile(SideEffectMixin, TrackingModelMixin, models.Model):
                 changes.add("v2ray_state")
                 changes.add("v2ray_state_date")
         return changes
-
-    @classmethod
-    def update__v2ray__many(
-        cls, queryset: models.QuerySet[V2RayProfile], force=False
-    ):
-        flag = []
-        for c_, q_ in enumerate(queryset):
-            flag.append(q_.update__v2ray(force=force))
-        return flag
 
     # ======================== others
     def __str__(self):
@@ -129,7 +142,9 @@ class V2RayProfile(SideEffectMixin, TrackingModelMixin, models.Model):
     TRACKED_FIELDS = ["active_admin"]
 
 
-class Subscription(SideEffectMixin, TrackingModelMixin, models.Model):
+class Subscription(
+    NotifierMixin, SideEffectMixin, TrackingModelMixin, models.Model
+):
     class StateChoice(models.TextChoices):
         RESERVE = "0", "Reserve"
         ACTIVE = "1", "Active"
@@ -193,6 +208,10 @@ class Subscription(SideEffectMixin, TrackingModelMixin, models.Model):
     )
     def activate(self):
         self.started_at = timezone.now()
+        self.add_notification(
+            "subscription.update.state",
+            {"id": self.id, "state": self.StateChoice.ACTIVE},
+        )
 
     @transition(
         field=state,
@@ -203,6 +222,10 @@ class Subscription(SideEffectMixin, TrackingModelMixin, models.Model):
         self.expired_at = timezone.now()
         self.cancel__due_date_notification()
         self.FLAG__JUST_EXPIRED = True
+        self.add_notification(
+            "subscription.update.state",
+            {"id": self.id, "state": self.StateChoice.EXPIRE},
+        )
 
     def update__state(self) -> bool:
         flag = False
@@ -218,6 +241,10 @@ class Subscription(SideEffectMixin, TrackingModelMixin, models.Model):
 
     def update__usage(self):
         self.downlink, self.uplink = self.calc__usage
+        self.add_notification(
+            "subscription.update.usage",
+            {"id": self.id, "downlink": self.downlink, "uplink": self.uplink},
+        )
 
     def update__due_date(self):
         self.due_date = (
@@ -270,12 +297,11 @@ class Subscription(SideEffectMixin, TrackingModelMixin, models.Model):
         for q_ in queryset:
             q_.update__state()
 
-    @classmethod
-    def update__due_date_notification__many(
-        cls, queryset: models.QuerySet[Subscription]
-    ):
-        for q_ in queryset:
-            q_.update__due_date_notification()
+    def notify__user(self):
+        u = self.user
+        u.update__subs(save=True)
+        u.update__v2ray()
+        u.save()
 
     # ======================== others
     def __str__(self):
@@ -307,7 +333,4 @@ def _dispatch__subscription__notify_user(
     instance: Subscription, created=None, **_
 ):
     if created or instance.FLAG__JUST_EXPIRED:
-        u = instance.user
-        u.update__subs(save=True)
-        u.update__v2ray()
-        u.save()
+        instance.notify__user()

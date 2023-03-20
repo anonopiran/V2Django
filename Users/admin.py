@@ -47,6 +47,8 @@ class V2RayProfileAdmin(CreateOnlyMixin, admin.ModelAdmin):
         "active_system",
         "v2ray_state",
         "v2ray_state_date",
+        "expired_subscription_count",
+        "reserved_subscription_count",
     ]
     list_display = [
         "email",
@@ -121,9 +123,6 @@ class SubscriptionAdmin(admin.ModelAdmin):
     @admin.display()
     def usage_total(self, obj: Subscription):
         return _calc__usage_total(obj)
-
-    def save_form(self, request, form, change):
-        return super().save_form(request, form, change)
 
 
 def _calc__usage_total(obj: Subscription):

@@ -6,7 +6,7 @@ attrs==22.2.0 ; python_version >= "3.10" and python_version < "4.0" \
     --hash=sha256:29e95c7f6778868dbd49170f98f8818f78f3dc5e0e37c0b1f474e3561b240836 \
     --hash=sha256:c9227bfc2f01993c03f68db37d1d15c9690188323c067c641f1a35ca58185f99
 billiard==3.6.4.0 ; python_version >= "3.10" and python_version < "4.0"
-celery[django,librabbitmq]==5.2.7 ; python_version >= "3.10" and python_version < "4.0"
+celery[ampq,django]==5.2.7 ; python_version >= "3.10" and python_version < "4.0"
 certifi==2022.12.7 ; python_version >= "3.10" and python_version < "4.0" \
     --hash=sha256:35824b4c3a97115964b408844d64aa14db1cc518f6562e8d7261699d1350a9e3 \
     --hash=sha256:4ad3232f5e926d6718ec31cfc1fcadfde020920e278684144551c91769c7bc18
@@ -179,20 +179,11 @@ idna==3.4 ; python_version >= "3.10" and python_version < "4.0" \
 inflection==0.5.1 ; python_version >= "3.10" and python_version < "4.0" \
     --hash=sha256:1a29730d366e996aaacffb2f1f1cb9593dc38e2ddd30c91250c6dde09ea9b417 \
     --hash=sha256:f38b2b640938a4f35ade69ac3d053042959b62a0f1076a5bbaa1b9526605a8a2
-influxdb-client[ciso]==1.35.0 ; python_version >= "3.10" and python_version < "4.0" \
-    --hash=sha256:a4c1751337bbfc0b0b0b2fb0fb285e66127bca21ae47a6b86b0bcf4fca05ee70 \
-    --hash=sha256:eaef9fb9adcdc9868b50770602bf06c662e9cf4a390d09f14c8e888f3947adbb
+influxdb-client[ciso]==1.36.1 ; python_version >= "3.10" and python_version < "4.0"
 jsonschema==4.17.3 ; python_version >= "3.10" and python_version < "4.0" \
     --hash=sha256:0f864437ab8b6076ba6707453ef8f98a6a0d512a80e93f8abdb676f737ecb60d \
     --hash=sha256:a870ad254da1a8ca84b6a2905cac29d265f805acc57af304784962a2aa6508f6
 kombu==5.2.4 ; python_version >= "3.10" and python_version < "4.0"
-librabbitmq==2.0.0 ; python_version >= "3.10" and python_version < "4.0" \
-    --hash=sha256:3116e40c02d4285b8dd69834e4cbcb1a89ea534ca9147e865f11d44e7cc56eea \
-    --hash=sha256:5cdfb473573396d43d54cef9e9b4c74fa3d1516da51d04a7b261f6ef4e0bd8be \
-    --hash=sha256:98e355f486964dadae7e8b51c9a60e9aa0653bbe27f6b14542687f305c4c3652 \
-    --hash=sha256:c2a8113d3c831808d1d940fdf43e4882636a1efe2864df7ab3bb709a45016b37 \
-    --hash=sha256:cd9cc09343b193d7cf2cff6c6a578061863bd986a4bdf38f922e9dc32e15d944 \
-    --hash=sha256:ffa2363a860ab5dcc3ce3703247e05e940c73d776c03a3f3f9deaf3cf43bb96c
 multidict==6.0.4 ; python_version >= "3.10" and python_version < "4.0" \
     --hash=sha256:01a3a55bd90018c9c080fbb0b9f4891db37d148a0a18722b42f94694f8b6d4c9 \
     --hash=sha256:0b1a97283e0c85772d613878028fec909f003993e1007eafa715b24b377cb9b8 \

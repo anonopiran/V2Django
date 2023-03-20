@@ -6,9 +6,13 @@ from Users.models import Subscription
 logger = get_task_logger(__name__)
 
 
-@shared_task
+@shared_task(acks_late=True)
 def expire_at_due_date(subs_id):
-    s_ = Subscription.objects.get(id=subs_id)
+    s_ = Subscription.objects.filter(id=subs_id)
+    if not s_.exists():
+        logger.warning(f"subs {s_} doesn't exists!")
+        return
+    s_ = s_.get()
     if s_.is_expired:
         logger.warning(f"subs {s_} is already expired!")
     else:

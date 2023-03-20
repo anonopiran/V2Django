@@ -1,9 +1,11 @@
 import typing
 from abc import abstractmethod
-from typing import Tuple, Callable, Type
+from functools import cached_property
 
-from django.db.models import Model
-from django.dispatch import Signal
+from django.db.models import Model, signals
+from django.dispatch import receiver
+
+from Utils.notifier import Notifier
 
 if typing.TYPE_CHECKING:
     _BaseModel = Model
@@ -11,42 +13,43 @@ else:
     _BaseModel = object
 
 
-class SignalDisconnect:
-    def __init__(self, *args: Tuple[Signal, Callable, Type[Model]]):
-        self.signals = args
-
-    def __enter__(self):
-        for s_ in self.signals:
-            s_[0].disconnect(receiver=s_[1], sender=s_[2])
-        return self
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        for s_ in self.signals:
-            s_[0].connect(receiver=s_[1], sender=s_[2])
+class SideEffectMixin(_BaseModel):
+    @abstractmethod
+    def apply__side_effects(self) -> set:
+        raise NotImplementedError
 
 
-class ChangeTrackMixin(_BaseModel):
-    change_track: typing.List[str]
+class NotifierMixin(_BaseModel):
+    notifications: list = None
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for f_ in self.change_track:
-            setattr(self, f"_{f_}__old", getattr(self, f_))
+        self.notifications = []
+
+    @cached_property
+    def notifier(self):
+        return Notifier()
+
+    def add_notification(self, topic, data):
+        self.notifications = self.notifications or []
+        self.notifications.append({"topic": topic, "body": data})
 
 
-class SideEffectMixin(_BaseModel):
-    @abstractmethod
-    def apply__side_effects(self):
-        raise NotImplementedError
+@receiver(signals.pre_save)
+def _dispatch__side_effect_mixin__pre_save(
+    sender, instance: SideEffectMixin, update_fields: list, **_
+):
+    if not issubclass(sender, SideEffectMixin):
+        return
+    f_ = instance.apply__side_effects()
+    if update_fields:
+        update_fields.extend(f_ - set(update_fields))
 
-    def save(
-        self,
-        force_insert=False,
-        force_update=False,
-        using=None,
-        update_fields=None,
-    ):
-        fields = self.apply__side_effects()
-        if update_fields is not None:
-            update_fields = fields.union(update_fields)
-        super().save(force_insert, force_update, using, update_fields)
+
+@receiver(signals.post_save)
+@receiver(signals.post_delete)
+def _dispatch__notifier_mixin__post_save(sender, instance: NotifierMixin, **_):
+    if not issubclass(sender, NotifierMixin):
+        return
+    for n_ in instance.notifications:
+        instance.notifier.publish(n_["topic"], n_["body"])

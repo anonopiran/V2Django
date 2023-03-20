@@ -18,7 +18,7 @@ optional = false
 python-versions = ">=3.7"
 
 [package.extras]
-tests = ["mypy (>=0.800)", "pytest", "pytest-asyncio"]
+tests = ["pytest", "pytest-asyncio", "mypy (>=0.800)"]
 
 [[package]]
 name = "attrs"
@@ -31,10 +31,10 @@ python-versions = ">=3.6"
 [package.extras]
 cov = ["attrs", "coverage-enable-subprocess", "coverage[toml] (>=5.3)"]
 dev = ["attrs"]
-docs = ["furo", "myst-parser", "sphinx", "sphinx-notfound-page", "sphinxcontrib-towncrier", "towncrier", "zope.interface"]
+docs = ["furo", "sphinx", "myst-parser", "zope.interface", "sphinx-notfound-page", "sphinxcontrib-towncrier", "towncrier"]
 tests = ["attrs", "zope.interface"]
-tests-no-zope = ["cloudpickle", "hypothesis", "mypy (>=0.971,<0.990)", "pympler", "pytest (>=4.3.0)", "pytest-mypy-plugins", "pytest-xdist"]
-tests_no_zope = ["cloudpickle", "hypothesis", "mypy (>=0.971,<0.990)", "pympler", "pytest (>=4.3.0)", "pytest-mypy-plugins", "pytest-xdist"]
+tests-no-zope = ["hypothesis", "pympler", "pytest (>=4.3.0)", "pytest-xdist", "cloudpickle", "mypy (>=0.971,<0.990)", "pytest-mypy-plugins"]
+tests_no_zope = ["hypothesis", "pympler", "pytest (>=4.3.0)", "pytest-xdist", "cloudpickle", "mypy (>=0.971,<0.990)", "pytest-mypy-plugins"]
 
 [[package]]
 name = "billiard"
@@ -81,7 +81,6 @@ click-plugins = ">=1.1.1"
 click-repl = ">=0.2.0"
 Django = {version = ">=1.11", optional = true, markers = "extra == \"django\""}
 kombu = ">=5.2.3,<6.0"
-librabbitmq = {version = ">=1.5.0", optional = true, markers = "extra == \"librabbitmq\""}
 pytz = ">=2021.3"
 vine = ">=5.0.0,<6.0"
 
@@ -184,7 +183,7 @@ python-versions = "*"
 click = ">=4.0"
 
 [package.extras]
-dev = ["coveralls", "pytest (>=3.6)", "pytest-cov", "wheel"]
+dev = ["pytest (>=3.6)", "pytest-cov", "wheel", "coveralls"]
 
 [[package]]
 name = "click-repl"
@@ -241,7 +240,7 @@ optional = false
 python-versions = ">=3.4,<4"
 
 [package.extras]
-develop = ["coverage[toml] (>=5.0a4)", "furo (>=2021.8.17b43,<2021.9.0)", "pytest (>=4.6.11)", "sphinx (>=3.5.0)", "sphinx-notfound-page"]
+develop = ["coverage[toml] (>=5.0a4)", "pytest (>=4.6.11)", "furo (>=2021.8.17b43,<2021.9.0)", "sphinx (>=3.5.0)", "sphinx-notfound-page"]
 docs = ["furo (>=2021.8.17b43,<2021.9.0)", "sphinx (>=3.5.0)", "sphinx-notfound-page"]
 testing = ["coverage[toml] (>=5.0a4)", "pytest (>=4.6.11)"]
 
@@ -316,8 +315,8 @@ optional = false
 python-versions = ">=3.7"
 
 [package.extras]
-docs = ["furo (>=2022.12.7)", "sphinx (>=5.3)", "sphinx-autodoc-typehints (>=1.19.5)"]
-testing = ["covdefaults (>=2.2.2)", "coverage (>=7.0.1)", "pytest (>=7.2)", "pytest-cov (>=4)", "pytest-timeout (>=2.1)"]
+docs = ["furo (>=2022.12.7)", "sphinx-autodoc-typehints (>=1.19.5)", "sphinx (>=5.3)"]
+testing = ["covdefaults (>=2.2.2)", "coverage (>=7.0.1)", "pytest-cov (>=4)", "pytest-timeout (>=2.1)", "pytest (>=7.2)"]
 
 [[package]]
 name = "flake8"
@@ -401,7 +400,7 @@ python-versions = ">=3.5"
 
 [[package]]
 name = "influxdb-client"
-version = "1.35.0"
+version = "1.36.1"
 description = "InfluxDB 2.0 Python client library"
 category = "main"
 optional = false
@@ -415,10 +414,10 @@ reactivex = ">=4.0.4"
 urllib3 = ">=1.26.0"
 
 [package.extras]
-async = ["aiocsv (>=1.2.2)", "aiohttp (>=3.8.1)"]
+async = ["aiohttp (>=3.8.1)", "aiocsv (>=1.2.2)"]
 ciso = ["ciso8601 (>=2.1.1)"]
-extra = ["numpy", "pandas (>=0.25.3)"]
-test = ["aioresponses (>=0.7.3)", "coverage (>=4.0.3)", "flake8 (>=5.0.3)", "httpretty (==1.0.5)", "jinja2 (==3.1.2)", "nose (>=1.3.7)", "pluggy (>=0.3.1)", "psutil (>=5.6.3)", "py (>=1.4.31)", "pytest (>=5.0.0)", "pytest-cov (>=3.0.0)", "randomize (>=0.13)", "sphinx (==1.8.5)", "sphinx-rtd-theme"]
+extra = ["pandas (>=0.25.3)", "numpy"]
+test = ["flake8 (>=5.0.3)", "coverage (>=4.0.3)", "nose (>=1.3.7)", "pluggy (>=0.3.1)", "py (>=1.4.31)", "randomize (>=0.13)", "pytest (>=5.0.0)", "pytest-cov (>=3.0.0)", "pytest-timeout (>=2.1.0)", "httpretty (==1.0.5)", "psutil (>=5.6.3)", "aioresponses (>=0.7.3)", "sphinx (==1.8.5)", "sphinx-rtd-theme", "jinja2 (==3.1.2)"]
 
 [[package]]
 name = "isort"
@@ -430,9 +429,9 @@ python-versions = ">=3.7.0"
 
 [package.extras]
 colors = ["colorama (>=0.4.3,<0.5.0)"]
+requirements-deprecated-finder = ["pip-api", "pipreqs"]
 pipfile-deprecated-finder = ["pipreqs", "requirementslib"]
 plugins = ["setuptools"]
-requirements-deprecated-finder = ["pip-api", "pipreqs"]
 
 [[package]]
 name = "jsonschema"
@@ -477,18 +476,6 @@ sqlalchemy = ["sqlalchemy"]
 sqs = ["boto3 (>=1.9.12)", "pycurl (>=7.44.1,<7.45.0)", "urllib3 (>=1.26.7)"]
 yaml = ["PyYAML (>=3.10)"]
 zookeeper = ["kazoo (>=1.3.1)"]
-
-[[package]]
-name = "librabbitmq"
-version = "2.0.0"
-description = "AMQP Client using the rabbitmq-c library."
-category = "main"
-optional = false
-python-versions = "*"
-
-[package.dependencies]
-amqp = ">=1.4.6"
-six = ">=1.0.0"
 
 [[package]]
 name = "mccabe"
@@ -552,8 +539,8 @@ optional = false
 python-versions = ">=3.7"
 
 [package.extras]
-docs = ["furo (>=2022.12.7)", "proselint (>=0.13)", "sphinx (>=5.3)", "sphinx-autodoc-typehints (>=1.19.5)"]
-test = ["appdirs (==1.4.4)", "covdefaults (>=2.2.2)", "pytest (>=7.2)", "pytest-cov (>=4)", "pytest-mock (>=3.10)"]
+docs = ["furo (>=2022.12.7)", "proselint (>=0.13)", "sphinx-autodoc-typehints (>=1.19.5)", "sphinx (>=5.3)"]
+test = ["appdirs (==1.4.4)", "covdefaults (>=2.2.2)", "pytest-cov (>=4)", "pytest-mock (>=3.10)", "pytest (>=7.2)"]
 
 [[package]]
 name = "pre-commit"
@@ -726,8 +713,8 @@ optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*"
 
 [package.extras]
-brotli = ["brotli (>=1.0.9)", "brotlicffi (>=0.8.0)", "brotlipy (>=0.6.0)"]
-secure = ["certifi", "cryptography (>=1.3.4)", "idna (>=2.0.0)", "ipaddress", "pyOpenSSL (>=0.14)", "urllib3-secure-extra"]
+brotli = ["brotlicffi (>=0.8.0)", "brotli (>=1.0.9)", "brotlipy (>=0.6.0)"]
+secure = ["pyOpenSSL (>=0.14)", "cryptography (>=1.3.4)", "idna (>=2.0.0)", "certifi", "urllib3-secure-extra", "ipaddress"]
 socks = ["PySocks (>=1.5.6,!=1.5.7,<2.0)"]
 
 [[package]]
@@ -778,7 +765,7 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.10"
-content-hash = "af323653e17c44295bd628d3db5dbe1ff96a8bc4d87866263c28b4d3a899dd95"
+content-hash = "19ebe04246b78b0936751f263a14cbe8a28010c218d5ae36a408cd277a36645f"
 
 [metadata.files]
 amqp = []
@@ -1013,10 +1000,7 @@ inflection = [
     {file = "inflection-0.5.1-py2.py3-none-any.whl", hash = "sha256:f38b2b640938a4f35ade69ac3d053042959b62a0f1076a5bbaa1b9526605a8a2"},
     {file = "inflection-0.5.1.tar.gz", hash = "sha256:1a29730d366e996aaacffb2f1f1cb9593dc38e2ddd30c91250c6dde09ea9b417"},
 ]
-influxdb-client = [
-    {file = "influxdb_client-1.35.0-py3-none-any.whl", hash = "sha256:a4c1751337bbfc0b0b0b2fb0fb285e66127bca21ae47a6b86b0bcf4fca05ee70"},
-    {file = "influxdb_client-1.35.0.tar.gz", hash = "sha256:eaef9fb9adcdc9868b50770602bf06c662e9cf4a390d09f14c8e888f3947adbb"},
-]
+influxdb-client = []
 isort = [
     {file = "isort-5.11.4-py3-none-any.whl", hash = "sha256:c033fd0edb91000a7f09527fe5c75321878f98322a77ddcc81adbd83724afb7b"},
     {file = "isort-5.11.4.tar.gz", hash = "sha256:6db30c5ded9815d813932c04c2f85a360bcdd35fed496f4d8f35495ef0a261b6"},
@@ -1026,14 +1010,6 @@ jsonschema = [
     {file = "jsonschema-4.17.3.tar.gz", hash = "sha256:0f864437ab8b6076ba6707453ef8f98a6a0d512a80e93f8abdb676f737ecb60d"},
 ]
 kombu = []
-librabbitmq = [
-    {file = "librabbitmq-2.0.0-cp27-cp27m-manylinux1_x86_64.whl", hash = "sha256:c2a8113d3c831808d1d940fdf43e4882636a1efe2864df7ab3bb709a45016b37"},
-    {file = "librabbitmq-2.0.0-cp27-cp27mu-manylinux1_x86_64.whl", hash = "sha256:3116e40c02d4285b8dd69834e4cbcb1a89ea534ca9147e865f11d44e7cc56eea"},
-    {file = "librabbitmq-2.0.0-cp34-cp34m-manylinux1_x86_64.whl", hash = "sha256:cd9cc09343b193d7cf2cff6c6a578061863bd986a4bdf38f922e9dc32e15d944"},
-    {file = "librabbitmq-2.0.0-cp35-cp35m-manylinux1_x86_64.whl", hash = "sha256:98e355f486964dadae7e8b51c9a60e9aa0653bbe27f6b14542687f305c4c3652"},
-    {file = "librabbitmq-2.0.0-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:5cdfb473573396d43d54cef9e9b4c74fa3d1516da51d04a7b261f6ef4e0bd8be"},
-    {file = "librabbitmq-2.0.0.tar.gz", hash = "sha256:ffa2363a860ab5dcc3ce3703247e05e940c73d776c03a3f3f9deaf3cf43bb96c"},
-]
 mccabe = [
     {file = "mccabe-0.7.0-py2.py3-none-any.whl", hash = "sha256:6c2d30ab6be0e4a46919781807b4f0d834ebdd6c6e3dca0bda5a15f863427b6e"},
     {file = "mccabe-0.7.0.tar.gz", hash = "sha256:348e0240c33b60bbdf4e523192ef919f28cb2c3d7d5c7794f74009290f236325"},
