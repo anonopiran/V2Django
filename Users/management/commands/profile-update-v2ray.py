@@ -1,9 +1,9 @@
 from django.core.management.base import BaseCommand
 
-from Users.management.commands.base.BaseCommand import BaseProfileCommand
+from Users.management.commands.Base.Mixins import ProfileCommandMixin
 
 
-class Command(BaseProfileCommand, BaseCommand):
+class Command(ProfileCommandMixin, BaseCommand):
     help = "Update profiles v2ray status"
 
     def handle(self, *args, **options):

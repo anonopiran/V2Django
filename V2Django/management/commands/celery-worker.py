@@ -52,7 +52,9 @@ class Command(BaseCommand):
     def handle(self, *_, **options):
         _args = self.arg_gen(options)
         if options["auto_reload"]:
-            print("Starting celery worker with autoreload...")
+            self.stderr.write(
+                self.style.SUCCESS("Starting celery worker with autoreload...")
+            )
             autoreload.run_with_reloader(self._restart_celery, args=_args)
         else:
             self._run(args=_args)
@@ -64,5 +66,5 @@ class Command(BaseCommand):
 
     def _run(self, args: str):
         cmd = f"{self._cmd_run} {args}"
-        print(f"running {cmd}")
+        self.stderr.write(self.style.SUCCESS(f"running {cmd}"))
         subprocess.call(shlex.split(cmd))

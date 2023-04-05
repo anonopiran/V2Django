@@ -1,10 +1,10 @@
 from django.core.management.base import BaseCommand
 from Users.models import Subscription
 
-from Users.management.commands.base.BaseCommand import BaseSubsCommand
+from Users.management.commands.Base.Mixins import SubsCommandMixin
 
 
-class Command(BaseSubsCommand, BaseCommand):
+class Command(SubsCommandMixin, BaseCommand):
     help = "Update subscription due date notification"
     RESERVES = False
     EXPIRES = False
