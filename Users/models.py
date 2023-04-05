@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import Optional, Tuple
 
@@ -16,8 +15,6 @@ from Upstream.models import Server
 from Users.manager import StatMan
 from Utils.models import SideEffectMixin, NotifierMixin
 from V2Django.celery import app as celery_app
-
-logger = logging.getLogger("django.server")
 
 
 class V2RayProfile(
@@ -85,17 +82,12 @@ class V2RayProfile(
     def update__subs(self, save=True) -> Optional[Subscription]:
         act = self.active_subscription
         if act:
-            logger.debug(
-                f"user {self} has an active subscription. doing nothing..."
-            )
             return None
         else:
-            logger.debug(f"user {self} has not any active subscription")
             res = self.reserve_subscription
             if res.exists():
                 act: Subscription = res.earliest("id")
                 act.activate()
-                logger.info(f"subscription {act} activated for user {self}")
                 if save:
                     act.save()
             return act

@@ -1,13 +1,10 @@
 import json
-import logging
 from contextlib import contextmanager
 from functools import lru_cache
 from typing import ContextManager
 
 import pika
 from django.conf import settings
-
-logger = logging.getLogger("django.server")
 
 
 @lru_cache
@@ -39,13 +36,10 @@ class Notifier:
             conn.close()
 
     def publish(self, topic, body):
-        log_msg = f"notification {body} to {topic}:"
         if self.exchange is None:
-            logger.info(log_msg + "not sent [no exchange]")
             return
         body = json.dumps(body)
         with self.connection() as conn:
             conn.channel().basic_publish(
                 exchange=self.exchange, routing_key=topic, body=body.encode()
             )
-        logger.info(log_msg + "done")
