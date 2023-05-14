@@ -1,5 +1,4 @@
 from django.core.management.base import BaseCommand
-from Users.models import Subscription
 
 from Users.management.commands.Base.Mixins import SubsCommandMixin
 
